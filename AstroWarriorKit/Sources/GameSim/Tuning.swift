@@ -7,8 +7,8 @@ public enum Tuning {
     public static let shipStartScreenY: Double = 144 // MEASURED: ROM ship rests at screen-y 144
     /// Start Y in our +Y-up logical space (screen-y measured from the top).
     public static var shipStartY: Double { LOGICAL_HEIGHT - shipStartScreenY }  // = 48
-    public static let shipFireInterval: Double = 8  // [extract] ticks
-    public static let shipBulletSpeed: Double = 6.0 // [extract]
+    public static let shipFireInterval: Double = 8  // MEASURED: ~8 frames between shots
+    public static let shipBulletSpeed: Double = 12.0 // MEASURED from ROM (px/frame, upward)
 
     // Scroll & spawning
     public static let scrollSpeed: Double = 1.0     // [extract] logical units / tick
