@@ -3,7 +3,10 @@
 // Placeholders below are guesses to make the sim runnable; they are NOT faithful yet.
 public enum Tuning {
     // Ship
-    public static let shipSpeed: Double = 1.5       // MEASURED from ROM (px/frame, per axis)
+    public static let shipSpeed: Double = 1.5       // MEASURED from ROM (px/frame, total; normalized)
+    public static let shipStartScreenY: Double = 144 // MEASURED: ROM ship rests at screen-y 144
+    /// Start Y in our +Y-up logical space (screen-y measured from the top).
+    public static var shipStartY: Double { LOGICAL_HEIGHT - shipStartScreenY }  // = 48
     public static let shipFireInterval: Double = 8  // [extract] ticks
     public static let shipBulletSpeed: Double = 6.0 // [extract]
 

@@ -69,8 +69,8 @@ let package = Package(
         // Swift wrapper over the reference core (swap seam for a native emulator later).
         .target(name: "ReferenceEmu", dependencies: ["CSMSCore"]),
 
-        // Headless measurement tool — drives the ROM and reads RAM to extract [extract] values.
-        .executableTarget(name: "ParityProbe", dependencies: ["ReferenceEmu"]),
+        // Headless measurement + parity tool — drives the ROM and our sim together.
+        .executableTarget(name: "ParityProbe", dependencies: ["ReferenceEmu", "GameSim", "GameInput"]),
 
         // Side-by-side parity debugger: ROM (left) vs our sim (right), one input stream.
         .target(

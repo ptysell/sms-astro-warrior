@@ -17,10 +17,10 @@ public final class Player: Entity, Damageable {
     public override func update(_ ctx: SimContext) {
         let axis = ctx.intent.moveAxis
         if axis.x != 0 || axis.y != 0 {             // directional (keys / stick)
-            // Per-axis movement (the ROM moves `speed` on each axis independently — diagonal
-            // is faster). MEASURED: 1.5 px/frame per axis.
-            position.x += max(-1, min(1, axis.x)) * speed
-            position.y += max(-1, min(1, axis.y)) * speed
+            // Normalized: the ROM caps total speed at 1.5, so diagonal is ~1.06/axis
+            // (1.5/√2) — MEASURED via the parity bot. Pure H/V is the full 1.5.
+            let len = axis.length
+            position += (axis / len) * speed
         } else if let target = ctx.intent.moveTarget {   // ease toward the input point (§7)
             let d = target - position
             let len = d.length

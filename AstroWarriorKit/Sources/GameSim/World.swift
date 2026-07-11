@@ -26,7 +26,7 @@ public final class World {
     public init(campaign: Campaign = DefaultContent.campaign()) {
         self.campaign = campaign
         self.director = LevelDirector(level: campaign.current)
-        self.player = Player(at: Vec2(LOGICAL_WIDTH / 2, 24),
+        self.player = Player(at: Vec2(LOGICAL_WIDTH / 2, Tuning.shipStartY),
                              speed: Tuning.shipSpeed,
                              weapon: SingleShot(speed: Tuning.shipBulletSpeed))
     }
@@ -76,7 +76,7 @@ public final class World {
         if lives < 0 { mode = .gameOver; return }
         // Respawn at the start position and clear the field.
         player.isDead = false
-        player.position = Vec2(LOGICAL_WIDTH / 2, 24)
+        player.position = Vec2(LOGICAL_WIDTH / 2, Tuning.shipStartY)
         entities.removeAll { $0 is Bullet || $0 is Enemy }
         spawner.reset()
     }
