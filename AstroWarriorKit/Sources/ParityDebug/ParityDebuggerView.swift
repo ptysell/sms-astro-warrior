@@ -70,6 +70,7 @@ public struct ParityDebuggerView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     parityBlock
                     entitiesBlock
+                    objectsBlock
                     simStateBlock
                     romRawBlock
                     inputBlock
@@ -151,6 +152,36 @@ public struct ParityDebuggerView: View {
                 .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
         }
+    }
+
+    // Live per-object inspector — one row per active ROM pool slot.
+    private var objectsBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            sectionHeader("OBJECTS", "ROM pool · live")
+            HStack(spacing: 0) {
+                cell("#", .gray, 24, .leading)
+                cell("type", .gray, 84, .leading)
+                cell("pos", .gray, 70, .leading)
+                cell("status", .gray, 78, .leading)
+            }.font(.system(size: 9, weight: .semibold, design: .monospaced))
+            ForEach(model.romObjects) { o in
+                HStack(spacing: 0) {
+                    cell("\(o.id)", .white.opacity(0.45), 24, .leading)
+                    cell(o.name, objColor(o.name), 84, .leading)
+                    cell(String(format: "%.0f,%.0f", o.x, o.y), .white.opacity(0.8), 70, .leading)
+                    cell(o.status, .white.opacity(0.65), 78, .leading)
+                }.font(.system(size: 10, design: .monospaced))
+            }
+            if model.romObjects.isEmpty {
+                Text("— none —").font(.system(size: 9, design: .monospaced)).foregroundStyle(.gray)
+            }
+        }
+    }
+    private func objColor(_ name: String) -> Color {
+        if name == "player" { return ourTint }
+        if name == "p.bullet" { return .yellow }
+        if name == "fx/hud" { return .white.opacity(0.4) }
+        return .orange
     }
 
     private func compareRow(_ name: String, _ rom: String, _ ours: String) -> some View {

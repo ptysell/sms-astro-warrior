@@ -62,6 +62,52 @@ public final class ParityDebugModel {
             hist.sorted { $0.key < $1.key }.map { "t\($0.key)·\($0.value)" }.joined(separator: " ")
         }
     }
+    // —— Live per-object inspector: one row per active ROM pool slot ——
+    public struct RomObject: Identifiable {
+        public let id: Int          // slot index 0…39
+        public let type: Int
+        public let name: String
+        public let x: Double, y: Double
+        public let status: String
+    }
+    public private(set) var romObjects: [RomObject] = []
+    private var prevObjPos: [Int: Vec2] = [:]
+
+    private func romWord(_ a: Int) -> Int { Int(core.readRAM(a)) | (Int(core.readRAM(a + 1)) << 8) }
+
+    static func typeName(_ t: Int) -> String {
+        switch t {
+        case 1:          return "player"
+        case 2:          return "p.bullet"
+        case 11, 12, 19: return "fx/hud"
+        default:         return "enemy·\(t)"
+        }
+    }
+    static func statusFor(_ t: Int, vx: Double, vy: Double) -> String {
+        if t == 2 { return "▲ shot" }
+        if abs(vx) < 0.2 && abs(vy) < 0.2 { return "idle" }
+        if vy < -1 { return "▲ up" }
+        if abs(vx) > 1.2 { return "↔ weave" }     // screen Y is +down
+        if vy > 0.3 { return "▼ descend" }
+        return "· move"
+    }
+
+    private func computeRomObjects() {
+        var objs: [RomObject] = [], seen = Set<Int>()
+        for s in stride(from: 0xC600, to: 0xD000, by: 0x40) {
+            let t = Int(core.readRAM(s)); guard t != 0 else { continue }
+            seen.insert(s)
+            let x = Double(romWord(s + 0x0A)) / 256.0, y = Double(romWord(s + 0x08)) / 256.0
+            var vx = 0.0, vy = 0.0
+            if let p = prevObjPos[s] { vx = x - p.x; vy = y - p.y }
+            prevObjPos[s] = Vec2(x, y)
+            objs.append(RomObject(id: (s - 0xC600) / 0x40, type: t, name: Self.typeName(t),
+                                  x: x, y: y, status: Self.statusFor(t, vx: vx, vy: vy)))
+        }
+        prevObjPos = prevObjPos.filter { seen.contains($0.key) }               // drop dead slots
+        romObjects = objs
+    }
+
     public func romPool() -> RomPool {
         var p = RomPool()
         for s in stride(from: 0xC600, to: 0xD000, by: 0x40) {
@@ -133,6 +179,7 @@ public final class ParityDebugModel {
             scene.stepSim(1)
         }
         lastPad = pad
+        computeRomObjects()
         frameCount += 1
     }
 
