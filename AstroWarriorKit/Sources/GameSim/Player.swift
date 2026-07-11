@@ -47,8 +47,8 @@ public final class Player: Entity, Damageable {
     }
 
     private func clampToField() {
-        position.x = min(max(position.x, 6), LOGICAL_WIDTH - 6)
-        position.y = min(max(position.y, 6), LOGICAL_HEIGHT - 6)
+        position.x = min(max(position.x, Tuning.shipMinX), Tuning.shipMaxX)   // MEASURED
+        position.y = min(max(position.y, Tuning.shipMinY), Tuning.shipMaxY)
     }
 
     func die(_ ctx: SimContext) {

@@ -10,6 +10,12 @@ public enum Tuning {
     public static let shipFireInterval: Double = 8  // MEASURED: ~8 frames between shots
     public static let shipBulletSpeed: Double = 12.0 // MEASURED from ROM (px/frame, upward)
 
+    // Ship movement bounds — MEASURED from ROM (position is the ship centre).
+    public static let shipMinX: Double = 18
+    public static let shipMaxX: Double = 242
+    public static let shipMinY: Double = LOGICAL_HEIGHT - 182   // screen-Y max 182 → y=10
+    public static let shipMaxY: Double = LOGICAL_HEIGHT - 0     // screen-Y min 0  → y=192
+
     // Scroll & spawning
     public static let scrollSpeed: Double = 1.0     // [extract] logical units / tick
     public static let spawnDistance: Double = 200.0 // [extract] activate-ahead distance (§6.3)

@@ -1,53 +1,52 @@
 import Foundation
+import GameSim
+import GameInput
 import ReferenceEmu
 
-// Measure player fire cadence + bullet speed from the ROM.
+// Parity verify: push the ship into every wall and confirm ROM vs our sim clamp identically.
 let romPath = "/Users/ptysell/Code/astro-warrior/docs/AstroWarrior.sms"
 guard let data = try? Data(contentsOf: URL(fileURLWithPath: romPath)) else { fputs("no rom\n", stderr); exit(1) }
 let core = SMSPlusCore()
 guard core.load(rom: data) else { fputs("load failed\n", stderr); exit(1) }
 
 @MainActor func run(_ b: RefButtons, _ n: Int) { for _ in 0..<n { core.step(buttons: b, pause: false) } }
-@MainActor func ram(_ a: Int) -> Int { Int(core.readRAM(a)) }
-@MainActor func word(_ a: Int) -> Int { ram(a) | (ram(a + 1) << 8) }         // 16-bit LE (Int-safe)
+@MainActor func romX() -> Double { Double(Int(core.readRAM(0xC60A)) | (Int(core.readRAM(0xC60B)) << 8)) / 256.0 }
+@MainActor func romY() -> Double { Double(Int(core.readRAM(0xC608)) | (Int(core.readRAM(0xC609)) << 8)) / 256.0 }
 
-// Entity pool: 40 slots × 0x40 from 0xC600. Per measured layout: +0x00 type, +0x08 Y(8.8), +0x0A X(8.8).
-let slots = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
-@MainActor func slotY(_ s: Int) -> Double { Double(word(s + 8)) / 256.0 }
-@MainActor func slotX(_ s: Int) -> Double { Double(word(s + 0x0A)) / 256.0 }
-@MainActor func active(_ s: Int) -> Bool { ram(s) != 0 }
+// A plan that holds each direction long enough to reach the walls.
+func plan(_ f: Int) -> Set<PadButton> {
+    var s: Set<PadButton> = [.button1]
+    switch (f / 90) % 4 {
+    case 0: s.insert(.right)
+    case 1: s.insert(.left)
+    case 2: s.insert(.up)
+    default: s.insert(.down)
+    }
+    return s
+}
+func toRef(_ s: Set<PadButton>) -> RefButtons {
+    var r: RefButtons = []
+    if s.contains(.up) { r.insert(.up) }; if s.contains(.down) { r.insert(.down) }
+    if s.contains(.left) { r.insert(.left) }; if s.contains(.right) { r.insert(.right) }
+    if s.contains(.button1) { r.insert(.fire) }
+    return r
+}
 
-// Boot to gameplay, settle.
-run([], 300); run(.fire, 5); run([], 8); run([], 120)
-print(String(format: "ship at (%.0f,%.0f)", slotX(0xC600), slotY(0xC600)))
+run([], 300); run(.fire, 5); run([], 8); run([], 120)      // ROM gameplay
+let world = World(); world.step(Intent(fire: true))        // our sim → playing
 
-// --- Bullet speed: fire one shot, follow the fastest upward mover ---
-var prev = slots.map { slotY($0) }
-run(.fire, 3); run([], 1)
-var bulletSlot = -1, bestSpeed = 0.0
-for _ in 0..<14 {
-    run([], 1)
-    for (i, s) in slots.enumerated() where s != 0xC600 {
-        let y = slotY(s); let dy = y - prev[i]                 // negative = moving up
-        if active(s), y > 2, y < 150, -dy > bestSpeed { bestSpeed = -dy; bulletSlot = s }
-        prev[i] = y
+var sumDX = 0.0, sumDY = 0.0, maxDX = 0.0, maxDY = 0.0, n = 0
+for f in 0..<360 {
+    let pad = plan(f)
+    core.step(buttons: toRef(pad), pause: false)
+    world.player.update(SimContext(world: world, intent: Intent(moveAxis: pad.axis, fire: true)))
+    let dx = world.player.position.x - romX()
+    let dy = (LOGICAL_HEIGHT - world.player.position.y) - romY()
+    sumDX += abs(dx); sumDY += abs(dy); maxDX = max(maxDX, abs(dx)); maxDY = max(maxDY, abs(dy)); n += 1
+    if f % 89 == 0 {
+        print(String(format: "f%3d  romX %.0f ourX %.0f (Δ%+.1f) | romY %.0f ourY %.0f (Δ%+.1f)",
+                     f, romX(), world.player.position.x, dx, romY(), LOGICAL_HEIGHT - world.player.position.y, dy))
     }
 }
-print(String(format: "bullet slot 0x%04X  speed ≈ %.2f px/frame (up)", bulletSlot, bestSpeed))
-
-// --- Fire cadence: hold fire, count spawns (slots entering the ship's Y band) ---
-run([], 60)                                                    // clear existing bullets
-let shipY = slotY(0xC600)
-var wasAtShip = Set<Int>(), spawnFrames: [Int] = []
-for f in 0..<180 {
-    run(.fire, 1)
-    for s in slots where s != 0xC600 {
-        let atShip = active(s) && abs(slotY(s) - shipY) < 8
-        if atShip && !wasAtShip.contains(s) { spawnFrames.append(f); wasAtShip.insert(s) }
-        if !atShip { wasAtShip.remove(s) }
-    }
-}
-let gaps = zip(spawnFrames.dropFirst(), spawnFrames).map { $0 - $1 }
-let avg = gaps.isEmpty ? 0 : Double(gaps.reduce(0, +)) / Double(gaps.count)
-print("spawns at frames: \(spawnFrames.prefix(12))")
-print(String(format: "fire cadence ≈ %.1f frames between shots (gaps: \(gaps.prefix(10)))", avg))
+print(String(format: "\nwith measured bounds:  mean|Δx|=%.2f max=%.2f   mean|Δy|=%.2f max=%.2f",
+             sumDX / Double(n), maxDX, sumDY / Double(n), maxDY))
