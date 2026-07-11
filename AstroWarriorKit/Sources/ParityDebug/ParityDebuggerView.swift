@@ -68,6 +68,7 @@ public struct ParityDebuggerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     parityBlock
+                    entitiesBlock
                     simStateBlock
                     romRawBlock
                     inputBlock
@@ -130,7 +131,36 @@ public struct ParityDebuggerView: View {
         .font(.system(size: 11, weight: .medium, design: .monospaced))
     }
 
-    // Our sim internals (full introspection).
+    // Entity-pool comparison: ROM (classified from work RAM) vs our sim.
+    private var entitiesBlock: some View {
+        let p = model.romPool()
+        return VStack(alignment: .leading, spacing: 4) {
+            sectionHeader("ENTITIES", "ROM ⟷ SIM")
+            HStack(spacing: 0) {
+                cell("", .gray, 96, .leading)
+                cell("ROM", romTint, 60, .trailing)
+                cell("OURS", ourTint, 60, .trailing)
+            }.font(.system(size: 9, weight: .semibold, design: .monospaced))
+            compareRow("active", "\(p.total)", "\(model.simEntities + 1)")   // +1: our player is separate
+            compareRow("· enemies", "\(p.enemies)", "\(model.simEnemies)")
+            compareRow("· p.bullets", "\(p.playerBullets)", "\(model.simPlayerBullets)")
+            compareRow("· e.bullets", "?", "\(model.simEnemyBullets)")       // ROM enemy-bullet type TBD
+            compareRow("· fx/other", "\(p.other)", "—")
+            Text("ROM types  \(p.histogram.isEmpty ? "—" : p.histogram)")
+                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+        }
+    }
+
+    private func compareRow(_ name: String, _ rom: String, _ ours: String) -> some View {
+        HStack(spacing: 0) {
+            cell(name, .white.opacity(0.85), 96, .leading)
+            cell(rom, romTint, 60, .trailing)
+            cell(ours, ourTint, 60, .trailing)
+        }.font(.system(size: 11, weight: .medium, design: .monospaced))
+    }
+
+    // Our sim internals (score/lives/mode).
     private var simStateBlock: some View {
         VStack(alignment: .leading, spacing: 5) {
             sectionHeader("SIM STATE", "our engine")
@@ -138,9 +168,6 @@ public struct ParityDebuggerView: View {
             kv("score", "\(model.simScore)", ourTint)
             kv("lives", String(repeating: "▲", count: max(0, model.simLives)), ourTint)
             kv("form", "\(model.simForm)", ourTint)
-            kv("entities", "\(model.simEntities)", .white.opacity(0.8))
-            kv("· enemies", "\(model.simEnemies)", .orange.opacity(0.9))
-            kv("· bullets", "\(model.simBullets)", .yellow.opacity(0.9))
             kv("scrollY", String(format: "%.0f", model.simScroll), .white.opacity(0.6))
         }
     }

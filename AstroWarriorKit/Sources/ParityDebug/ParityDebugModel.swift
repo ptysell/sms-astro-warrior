@@ -47,7 +47,36 @@ public final class ParityDebugModel {
     public var simEnemies: Int { scene.simEnemyCount }
     public var simBullets: Int { scene.simBulletCount }
     public var simScroll: Double { scene.simScrollY }
+    public var simPlayerBullets: Int { scene.simPlayerBullets }
+    public var simEnemyBullets: Int { scene.simEnemyBullets }
+    public var simBosses: Int { scene.simBossCount }
     public func romByte(_ a: Int) -> Int { Int(core.readRAM(a)) }
+
+    // Classify the ROM's 40-slot entity pool (0xC600, stride 0x40, +0x00 = type).
+    // Type map is empirical (t1 player, t2 player bullet, high types = enemies) and
+    // refined by watching the live histogram in the monitor.
+    public struct RomPool {
+        public var total = 0, player = 0, playerBullets = 0, enemies = 0, other = 0
+        public var hist: [Int: Int] = [:]
+        public var histogram: String {
+            hist.sorted { $0.key < $1.key }.map { "t\($0.key)·\($0.value)" }.joined(separator: " ")
+        }
+    }
+    public func romPool() -> RomPool {
+        var p = RomPool()
+        for s in stride(from: 0xC600, to: 0xD000, by: 0x40) {
+            let t = Int(core.readRAM(s))
+            guard t != 0 else { continue }
+            p.total += 1; p.hist[t, default: 0] += 1
+            switch t {
+            case 1:      p.player += 1
+            case 2:      p.playerBullets += 1
+            case 16...:  p.enemies += 1        // enemies observed at high type values (21, 24, …)
+            default:     p.other += 1          // effects / stage objects (11, 12, …)
+            }
+        }
+        return p
+    }
 
     // ROM ship position — MEASURED via ParityProbe: X = 8.8 word @0xC60A, Y = 8.8 word @0xC608.
     public var romShip: (x: Double, y: Double) {
