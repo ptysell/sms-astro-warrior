@@ -108,6 +108,15 @@ public final class GameScene: SKScene {
     /// Player position in logical units — telemetry for the parity readout.
     public var playerPos: Vec2 { world.player.position }
 
+    // Live sim introspection for the debugger's system monitor.
+    public var simScore: Int { world.score }
+    public var simLives: Int { world.lives }
+    public var simForm: Int { world.player.form }
+    public var simEntityCount: Int { world.entities.count }
+    public var simEnemyCount: Int { world.entities.reduce(0) { $0 + ($1 is Enemy ? 1 : 0) } }
+    public var simBulletCount: Int { world.entities.reduce(0) { $0 + ($1 is Bullet ? 1 : 0) } }
+    public var simScrollY: Double { world.scrollY }
+
     // MARK: render
     private func present(_ snap: Snapshot) {
         let camera = Camera(viewport: size)

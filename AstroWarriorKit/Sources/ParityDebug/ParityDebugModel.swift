@@ -34,6 +34,21 @@ public final class ParityDebugModel {
     public var simMode: Mode { scene.simMode }
     public var ourShip: Vec2 { scene.playerPos }
 
+    /// The pad actually driving both cores this frame (live or replayed) — for the monitor.
+    public private(set) var lastPad = Set<PadButton>()
+
+    // —— System-monitor readouts ——
+    public var romShipScreen: (x: Double, y: Double) { romShip }                 // already screen coords
+    public var ourShipScreen: (x: Double, y: Double) { (scene.playerPos.x, LOGICAL_HEIGHT - scene.playerPos.y) }
+    public var simScore: Int { scene.simScore }
+    public var simLives: Int { scene.simLives }
+    public var simForm: Int { scene.simForm }
+    public var simEntities: Int { scene.simEntityCount }
+    public var simEnemies: Int { scene.simEnemyCount }
+    public var simBullets: Int { scene.simBulletCount }
+    public var simScroll: Double { scene.simScrollY }
+    public func romByte(_ a: Int) -> Int { Int(core.readRAM(a)) }
+
     // ROM ship position — MEASURED via ParityProbe: X = 8.8 word @0xC60A, Y = 8.8 word @0xC608.
     public var romShip: (x: Double, y: Double) {
         (Double(core.readRAM16(0xC60A)) / 256.0, Double(core.readRAM16(0xC608)) / 256.0)
@@ -88,6 +103,7 @@ public final class ParityDebugModel {
             scene.setFire(pad.contains(.button1))
             scene.stepSim(1)
         }
+        lastPad = pad
         frameCount += 1
     }
 

@@ -1,16 +1,20 @@
 import SwiftUI
 import SpriteKit
 import GameSim
+import GameInput
 import GameRenderSpriteKit
 
-// Dual viewer in deterministic lockstep: original ROM (left) vs our sim (right), one input
-// stream driving both, with record/replay and a live position readout for measurement.
+// Dual viewer in deterministic lockstep + a live System Monitor inspector.
 // Defaults: arrows = move · Z = fire · X = Button 2 · Q = Pause · W = Reset.
 public struct ParityDebuggerView: View {
     @State private var model = ParityDebugModel()
     @FocusState private var focused: Bool
-
     private let clock = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+
+    // Instrument palette
+    private let romTint = Color(red: 0.35, green: 0.85, blue: 1.0)     // cyan
+    private let ourTint = Color(red: 0.45, green: 1.0, blue: 0.55)     // green
+    private let panelBG = Color(white: 0.06)
 
     public init() {}
 
@@ -18,18 +22,14 @@ public struct ParityDebuggerView: View {
         VStack(spacing: 0) {
             controlBar
             recordBar
-            HStack(spacing: 0) {
-                pane(title: "ORIGINAL ROM") {
+            HStack(spacing: 10) {
+                gamePane("ORIGINAL ROM", tint: romTint) {
                     if let img = model.emulatorImage {
-                        Image(decorative: img, scale: 1)
-                            .resizable().interpolation(.none)
+                        Image(decorative: img, scale: 1).resizable().interpolation(.none)
                             .aspectRatio(256.0 / 192.0, contentMode: .fit)
-                    } else {
-                        placeholder(model.romLoaded ? "starting…" : "ROM not found")
-                    }
+                    } else { placeholder(model.romLoaded ? "starting…" : "ROM not found") }
                 }
-                Divider().overlay(.white.opacity(0.15))
-                pane(title: "OUR SIM") {
+                gamePane("OUR SIM", tint: ourTint) {
                     ZStack {
                         SpriteView(scene: model.scene, options: [.ignoresSiblingOrder])
                             .aspectRatio(256.0 / 192.0, contentMode: .fit)
@@ -40,8 +40,9 @@ public struct ParityDebuggerView: View {
                         }
                     }
                 }
+                systemMonitor.frame(width: 300)
             }
-            telemetry
+            .padding(10)
             legend
         }
         .background(.black)
@@ -51,84 +52,211 @@ public struct ParityDebuggerView: View {
         .onKeyPress(phases: [.down, .up]) { handle($0) }
     }
 
+    // MARK: - System Monitor
+    private var systemMonitor: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("SYSTEM MONITOR", systemImage: "waveform.path.ecg")
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(.white)
+                Spacer()
+                drivePill
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color(white: 0.12))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    parityBlock
+                    simStateBlock
+                    romRawBlock
+                    inputBlock
+                }
+                .padding(12)
+            }
+        }
+        .background(panelBG)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.08)))
+    }
+
+    private var drivePill: some View {
+        let (label, color): (String, Color) = {
+            switch model.drive {
+            case .live: return ("LIVE", .gray)
+            case .recording: return ("● REC \(model.tapeLength)", .red)
+            case .replaying: return ("▶ PLAY", .yellow)
+            }
+        }()
+        return Text(label).font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(color).padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.15), in: Capsule())
+    }
+
+    // Parity comparison — the mapped, comparable signals.
+    private var parityBlock: some View {
+        let rom = model.romShipScreen, our = model.ourShipScreen
+        return VStack(alignment: .leading, spacing: 6) {
+            sectionHeader("PARITY", "ROM ⟷ SIM")
+            HStack(spacing: 0) {
+                cell("SIGNAL", .gray, 78, .leading)
+                cell("ROM", romTint, 64, .trailing)
+                cell("OURS", ourTint, 64, .trailing)
+                cell("Δ", .gray, 60, .trailing)
+            }.font(.system(size: 9, weight: .semibold, design: .monospaced))
+            parityRow("ship.x", rom.x, our.x)
+            parityRow("ship.y", rom.y, our.y)
+        }
+    }
+
+    private func parityRow(_ name: String, _ rom: Double, _ our: Double) -> some View {
+        let d = our - rom
+        let dColor: Color = abs(d) < 1.0 ? ourTint : (abs(d) < 4 ? .yellow : .orange)
+        return VStack(spacing: 3) {
+            HStack(spacing: 0) {
+                cell(name, .white.opacity(0.85), 78, .leading)
+                cell(String(format: "%.1f", rom), romTint, 64, .trailing)
+                cell(String(format: "%.1f", our), ourTint, 64, .trailing)
+                cell(String(format: "%+.1f", d), dColor, 60, .trailing)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.06)).frame(height: 3)
+                    Capsule().fill(dColor)
+                        .frame(width: max(2, geo.size.width * (1 - min(1, abs(d) / 24))), height: 3)
+                }
+            }.frame(height: 3)
+        }
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
+    }
+
+    // Our sim internals (full introspection).
+    private var simStateBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            sectionHeader("SIM STATE", "our engine")
+            kv("mode", String(describing: model.simMode), ourTint)
+            kv("score", "\(model.simScore)", ourTint)
+            kv("lives", String(repeating: "▲", count: max(0, model.simLives)), ourTint)
+            kv("form", "\(model.simForm)", ourTint)
+            kv("entities", "\(model.simEntities)", .white.opacity(0.8))
+            kv("· enemies", "\(model.simEnemies)", .orange.opacity(0.9))
+            kv("· bullets", "\(model.simBullets)", .yellow.opacity(0.9))
+            kv("scrollY", String(format: "%.0f", model.simScroll), .white.opacity(0.6))
+        }
+    }
+
+    // Raw ROM bytes — "what the machine is doing".
+    private var romRawBlock: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            sectionHeader("ROM RAW", "work RAM")
+            hexByte("timer @C286", 0xC286)
+            hexByte("p.type @C600", 0xC600)
+            hexByte("p.x.hi @C60B", 0xC60B)
+            hexByte("p.y.hi @C609", 0xC609)
+        }
+    }
+
+    private var inputBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionHeader("INPUT", "shared")
+            HStack(spacing: 6) {
+                glyph("◀", .left); glyph("▲", .up); glyph("▼", .down); glyph("▶", .right)
+                Spacer().frame(width: 8)
+                glyph("Z", .button1); glyph("X", .button2)
+                Spacer()
+                Text("f\(model.frameCount)").font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.gray)
+            }
+        }
+    }
+
+    private func glyph(_ s: String, _ b: PadButton) -> some View {
+        let on = model.lastPad.contains(b)
+        return Text(s).font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(on ? .black : .white.opacity(0.35))
+            .frame(width: 22, height: 22)
+            .background(on ? ourTint : Color(white: 0.14), in: RoundedRectangle(cornerRadius: 5))
+    }
+
+    // MARK: - small builders
+    private func sectionHeader(_ title: String, _ sub: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(.system(size: 10, weight: .heavy, design: .monospaced)).foregroundStyle(.white)
+            Text(sub).font(.system(size: 8, design: .monospaced)).foregroundStyle(.gray)
+            Spacer()
+        }
+        .padding(.bottom, 2)
+        .overlay(Rectangle().fill(.white.opacity(0.08)).frame(height: 1), alignment: .bottom)
+    }
+    private func cell(_ s: String, _ c: Color, _ w: CGFloat, _ a: Alignment) -> some View {
+        Text(s).foregroundStyle(c).frame(width: w, alignment: a)
+    }
+    private func kv(_ k: String, _ v: String, _ c: Color) -> some View {
+        HStack {
+            Text(k).font(.system(size: 11, design: .monospaced)).foregroundStyle(.gray)
+            Spacer()
+            Text(v).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(c)
+        }
+    }
+    private func hexByte(_ k: String, _ addr: Int) -> some View {
+        let v = model.romByte(addr)
+        return HStack {
+            Text(k).font(.system(size: 10, design: .monospaced)).foregroundStyle(.gray)
+            Spacer()
+            Text(String(format: "0x%02X", v)).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(romTint)
+            Text("(\(v))").font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
+        }
+    }
+
+    // MARK: - chrome
     private var controlBar: some View {
         HStack(spacing: 14) {
             Button(model.running ? "⏸ Pause" : "▶ Resume") { model.running.toggle() }
             Button("⏭ Step") { model.stepOnce() }.disabled(model.running)
             Button("↺ Reset") { model.resetBoth() }
             Spacer()
-            Text("frame \(model.frameCount)")
-                .font(.system(.caption, design: .monospaced)).foregroundStyle(.gray)
             Text(model.romLoaded ? "ROM ✓" : "ROM ✗")
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(model.romLoaded ? .green : .red)
         }
         .padding(.horizontal, 12).padding(.vertical, 8).background(.black)
     }
-
     private var recordBar: some View {
         HStack(spacing: 10) {
-            Button("● Rec") { model.startRecording() }
-                .foregroundStyle(model.drive == .recording ? .red : .primary)
+            Button("● Rec") { model.startRecording() }.foregroundStyle(model.drive == .recording ? .red : .primary)
             Button("▶ Play") { model.startReplay() }.disabled(model.tapeLength == 0)
             Button("■ Stop") { model.stopTape() }
             Button("Save") { model.saveTape() }.disabled(model.tapeLength == 0)
             Button("Load") { model.loadTape() }
             Spacer()
-            Text(model.driveLabel).font(.system(.caption, design: .monospaced))
-                .foregroundStyle(model.drive == .live ? .gray : .yellow)
         }
-        .padding(.horizontal, 12).padding(.vertical, 4).background(.black)
-        .font(.caption)
+        .padding(.horizontal, 12).padding(.vertical, 4).background(.black).font(.caption)
     }
-
-    private var telemetry: some View {
-        let rom = model.romShip, our = model.ourShip
-        let dx = our.x - rom.x, dy = our.y - rom.y
-        return HStack(spacing: 24) {
-            metric("ROM ship", String(format: "%.1f, %.1f", rom.x, rom.y), .cyan)
-            metric("OUR ship", String(format: "%.1f, %.1f", our.x, our.y), .green)
-            metric("Δ", String(format: "%.1f, %.1f", dx, dy),
-                   abs(dx) + abs(dy) < 2 ? .green : .orange)
-            metric("our mode", String(describing: model.simMode), .gray)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6).background(.black)
-    }
-
-    private func metric(_ label: String, _ value: String, _ color: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(label).font(.system(size: 10, design: .monospaced)).foregroundStyle(.gray)
-            Text(value).font(.system(size: 12, weight: .bold, design: .monospaced)).foregroundStyle(color)
-        }
-    }
-
     private var legend: some View {
         Text("← ↑ ↓ →  move   ·   Z  fire   ·   X  button 2   ·   Q  pause   ·   W  reset")
             .font(.system(size: 11, design: .monospaced)).foregroundStyle(.gray)
             .padding(.vertical, 6).frame(maxWidth: .infinity).background(.black)
     }
-
-    private func pane<Content: View>(title: String, @ViewBuilder _ content: () -> Content) -> some View {
+    private func gamePane<Content: View>(_ title: String, tint: Color, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 4) {
-            Text(title).font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.gray).padding(.top, 6)
+            Text(title).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(tint)
+                .padding(.top, 6)
             content()
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
     }
-
     private func placeholder(_ text: String) -> some View {
         ZStack { Color.black
             Text(text).font(.system(.body, design: .monospaced)).foregroundStyle(.gray)
         }.aspectRatio(256.0 / 192.0, contentMode: .fit)
     }
 
+    // MARK: - input
     private func handle(_ press: KeyPress) -> KeyPress.Result {
         guard let token = token(for: press.key) else { return .ignored }
         return model.handleKey(token: token, down: press.phase == .down) ? .handled : .ignored
     }
-
     private func token(for key: KeyEquivalent) -> String? {
         switch key {
         case .upArrow: return "upArrow"
