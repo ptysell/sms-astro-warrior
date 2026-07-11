@@ -69,11 +69,11 @@ public final class ParityDebugModel {
             guard t != 0 else { continue }
             p.total += 1; p.hist[t, default: 0] += 1
             switch t {
-            case 1:      p.player += 1
-            case 2:      p.playerBullets += 1
-            case 16...:  p.enemies += 1        // enemies observed at high type values (21, 24, …)
-            default:     p.other += 1          // effects / stage objects (11, 12, …)
-            }
+            case 1:          p.player += 1
+            case 2:          p.playerBullets += 1
+            case 11, 12, 19: p.other += 1      // MEASURED fx/HUD (static, motion-classified)
+            default:         p.enemies += 1    // every wave adds a species (18,20,21,22,24,25,39…)
+            }                                   // (rare enemy bullets/power-ups fold in here)
         }
         return p
     }

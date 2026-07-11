@@ -41,6 +41,7 @@ public struct ParityDebuggerView: View {
                     }
                 }
                 systemMonitor.frame(width: 300)
+                Spacer(minLength: 0)                 // absorb extra width so nothing is pushed off-screen
             }
             .padding(10)
             legend
@@ -144,8 +145,8 @@ public struct ParityDebuggerView: View {
             compareRow("active", "\(p.total)", "\(model.simEntities + 1)")   // +1: our player is separate
             compareRow("· enemies", "\(p.enemies)", "\(model.simEnemies)")
             compareRow("· p.bullets", "\(p.playerBullets)", "\(model.simPlayerBullets)")
-            compareRow("· e.bullets", "?", "\(model.simEnemyBullets)")       // ROM enemy-bullet type TBD
-            compareRow("· fx/other", "\(p.other)", "—")
+            compareRow("· e.bullets", "—", "\(model.simEnemyBullets)")       // ROM: fold into enemies (rare)
+            compareRow("· fx/hud", "\(p.other)", "—")
             Text("ROM types  \(p.histogram.isEmpty ? "—" : p.histogram)")
                 .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 2)
@@ -271,7 +272,7 @@ public struct ParityDebuggerView: View {
             content()
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+        .frame(maxWidth: 460, maxHeight: .infinity).background(.black)   // cap so the monitor stays on-screen
     }
     private func placeholder(_ text: String) -> some View {
         ZStack { Color.black
