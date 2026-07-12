@@ -5,6 +5,19 @@ platforms (Mac-first dev), whose **gameplay simulation is ported from the origin
 plays identically**, while presentation is rebuilt with SpriteKit / SwiftUI. See
 [`docs/`](docs/) for the full build blueprint and the worksweep plan.
 
+## Status
+
+The pure `GameSim` skeleton runs (ship, firing, waves, Stage-1 content into a boss). A
+**parity debugger** runs the original ROM beside our sim in deterministic lockstep, and
+we've begun extracting faithful values from the ROM and pouring them into `Tuning.swift`.
+
+**Player ship is now 1:1 with the ROM** — speed (1.5 px/f, normalized), start position,
+bullet speed (12 px/f), fire cadence, and movement bounds are all measured and verified
+(tracks the ROM to ±1 frame). The entity pool is classified (player / bullet / power-up /
+fx / enemy species). Full measured record: [`docs/parity-findings.md`](docs/parity-findings.md).
+
+Next: enemy species names + per-type hp/points, scroll rate, and the spawn/block tables.
+
 ## Layout
 
 - **`AstroWarriorKit/`** — Swift package (the engine). `GameSim` is pure, deterministic,
