@@ -145,6 +145,7 @@ public struct ParityDebuggerView: View {
             }.font(.system(size: 9, weight: .semibold, design: .monospaced))
             compareRow("active", "\(p.total)", "\(model.simEntities + 1)")   // +1: our player is separate
             compareRow("· enemies", "\(p.enemies)", "\(model.simEnemies)")
+            compareRow("· power-ups", "\(p.powerups)", "\(model.simPowerUps)")   // t18, down-centre
             compareRow("· p.bullets", "\(p.playerBullets)", "\(model.simPlayerBullets)")
             compareRow("· e.bullets", "—", "\(model.simEnemyBullets)")       // ROM: fold into enemies (rare)
             compareRow("· fx/hud", "\(p.other)", "—")

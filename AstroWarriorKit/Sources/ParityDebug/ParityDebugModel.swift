@@ -50,13 +50,14 @@ public final class ParityDebugModel {
     public var simPlayerBullets: Int { scene.simPlayerBullets }
     public var simEnemyBullets: Int { scene.simEnemyBullets }
     public var simBosses: Int { scene.simBossCount }
+    public var simPowerUps: Int { scene.simPowerUpCount }
     public func romByte(_ a: Int) -> Int { Int(core.readRAM(a)) }
 
     // Classify the ROM's 40-slot entity pool (0xC600, stride 0x40, +0x00 = type).
     // Type map is empirical (t1 player, t2 player bullet, high types = enemies) and
     // refined by watching the live histogram in the monitor.
     public struct RomPool {
-        public var total = 0, player = 0, playerBullets = 0, enemies = 0, other = 0
+        public var total = 0, player = 0, playerBullets = 0, enemies = 0, powerups = 0, other = 0
         public var hist: [Int: Int] = [:]
         public var histogram: String {
             hist.sorted { $0.key < $1.key }.map { "t\($0.key)·\($0.value)" }.joined(separator: " ")
@@ -79,12 +80,14 @@ public final class ParityDebugModel {
         switch t {
         case 1:          return "player"
         case 2:          return "p.bullet"
+        case 18:         return "power-up"
         case 11, 12, 19: return "fx/hud"
         default:         return "enemy·\(t)"
         }
     }
     static func statusFor(_ t: Int, vx: Double, vy: Double) -> String {
         if t == 2 { return "▲ shot" }
+        if t == 18 { return "▼ drop" }
         if abs(vx) < 0.2 && abs(vy) < 0.2 { return "idle" }
         if vy < -1 { return "▲ up" }
         if abs(vx) > 1.2 { return "↔ weave" }     // screen Y is +down
@@ -117,9 +120,10 @@ public final class ParityDebugModel {
             switch t {
             case 1:          p.player += 1
             case 2:          p.playerBullets += 1
-            case 11, 12, 19: p.other += 1      // MEASURED fx/HUD (static, motion-classified)
-            default:         p.enemies += 1    // every wave adds a species (18,20,21,22,24,25,39…)
-            }                                   // (rare enemy bullets/power-ups fold in here)
+            case 18:         p.powerups += 1    // MEASURED: pickup travels down centre (avgX 128)
+            case 11, 12, 19: p.other += 1       // MEASURED fx/HUD (static)
+            default:         p.enemies += 1     // one type per species (20,21,22,24,25,39…)
+            }
         }
         return p
     }

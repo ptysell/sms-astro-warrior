@@ -118,6 +118,7 @@ public final class GameScene: SKScene {
     public var simPlayerBullets: Int { world.entities.reduce(0) { $0 + (($1 as? Bullet)?.side == .player ? 1 : 0) } }
     public var simEnemyBullets: Int { world.entities.reduce(0) { $0 + (($1 as? Bullet)?.side == .enemy ? 1 : 0) } }
     public var simBossCount: Int { world.entities.reduce(0) { $0 + ($1 is Boss ? 1 : 0) } }
+    public var simPowerUpCount: Int { world.entities.reduce(0) { $0 + ($1 is PowerUp ? 1 : 0) } }
     public var simScrollY: Double { world.scrollY }
 
     // MARK: render
