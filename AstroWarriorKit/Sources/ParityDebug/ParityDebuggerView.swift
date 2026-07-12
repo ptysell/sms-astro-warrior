@@ -143,8 +143,10 @@ public struct ParityDebuggerView: View {
                 cell("ROM", romTint, 60, .trailing)
                 cell("OURS", ourTint, 60, .trailing)
             }.font(.system(size: 9, weight: .semibold, design: .monospaced))
-            compareRow("active", "\(p.total)", "\(model.simEntities + 1)")   // +1: our player is separate
-            compareRow("· enemies", "\(p.enemies)", "\(model.simEnemies)")
+            // "gameplay" excludes fx/hud (no sim equivalent) so it matches at true parity.
+            compareRow("gameplay", "\(p.total - p.other)", "\(model.simEntities + 1)")   // +1: player is separate
+            // ROM classifier lumps the boss into enemies, so OURS adds bosses to compare like-for-like.
+            compareRow("· enemies", "\(p.enemies)", "\(model.simEnemies + model.simBosses)")
             compareRow("· power-ups", "\(p.powerups)", "\(model.simPowerUps)")   // t18, down-centre
             compareRow("· p.bullets", "\(p.playerBullets)", "\(model.simPlayerBullets)")
             compareRow("· e.bullets", "—", "\(model.simEnemyBullets)")       // ROM: fold into enemies (rare)
