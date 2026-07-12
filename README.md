@@ -3,7 +3,9 @@
 A ground-up rebuild of the 1986 Sega Master System shooter *Astro Warrior* for Apple
 platforms (Mac-first dev), whose **gameplay simulation is ported from the original so it
 plays identically**, while presentation is rebuilt with SpriteKit / SwiftUI. See
-[`docs/`](docs/) for the full build blueprint and the worksweep plan.
+[`docs/`](docs/) for the full build blueprint and the worksweep plan, and
+[`docs/roadmap-two-tracks.md`](docs/roadmap-two-tracks.md) for the game-vs-framework
+(SegaKit) parallel-track plan.
 
 ## Status
 
