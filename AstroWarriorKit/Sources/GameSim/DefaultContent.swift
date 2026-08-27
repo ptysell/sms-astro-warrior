@@ -6,43 +6,40 @@ public enum DefaultContent {
     }
 
     static func galaxy() -> Level {
-        // Stage 1 — scrollLength MEASURED (907 ticks = ~15s). Wave cue positions are
-        // placeholders scaled to fit; real atScroll values [extract] from ROM.
+        // Galaxy stage — MEASURED from the ROM (ParityProbe, driven headlessly to countdown 0).
+        // scrollLength = 907 ticks (0xC020:0xC021 starts at 907, −1/frame). The spawn schedule is
+        // fully SCROLL-SCRIPTED and DETERMINISTIC: two different bots produced an identical schedule.
+        // atScroll = 907 − (countdown at spawn). baseX = the scripted screen-x anchor (also MEASURED).
+        //
+        // The whole stage is just SIX waves + the fortress boss (Zanoni). Only two grunt species
+        // (both confirmed by bank-4 sprite decode):
+        //   • romType 21 = Cult  — ringed magenta/green disc; enters as a flat row of 4 (~32 px apart),
+        //                          descends and converges toward centre. 1-HP, 100 pts. No fire.
+        //   • romType 24 = chevron (Sharlin) — small yellow chevron; six enter stacked at centre-top
+        //                          and release ~9 frames apart, each tracing a down-right curve.
+        //                          1-HP, 100 pts. No fire. (Curos is a separate cross-shaped enemy.)
         let waves: [WaveCue] = [
-            // — Opening: easy weavers —
-            cue(38,   Bestiary.cult,       .line,   4, 0),
-            cue(81,   Bestiary.cult,       .arc,    6, 8),
-            // — Introduce shooters —
-            cue(131,  Bestiary.curos,      .stream, 4, 40),
-            cue(176,  Bestiary.cult,       .line,   6, 0),
-            // — Introduce divers —
-            cue(222,  Bestiary.sharlin,    .vee,    5, 12),
-            cue(267,  Bestiary.sacle,      .line,   4, 0),
-            cue(313,  Bestiary.curos,      .stream, 5, 36),
-            cue(358,  Bestiary.sharlin,    .vee,    6, 10),
-            // — First heavy —
-            cue(403,  Bestiary.motherBoon, .stream, 1, 0),
-            cue(418,  Bestiary.cult,       .arc,    6, 8),
-            // — Mid-stage mix, denser —
-            cue(479,  Bestiary.sacle,      .arc,    6, 10),
-            cue(534,  Bestiary.curos,      .stream, 6, 34),
-            cue(590,  Bestiary.sharlin,    .vee,    6, 10),
-            cue(635,  Bestiary.cult,       .line,   6, 0),
-            // — Pre-boss gauntlet —
-            cue(686,  Bestiary.sacle,      .line,   5, 0),
-            cue(731,  Bestiary.curos,      .stream, 6, 30),
-            cue(781,  Bestiary.sharlin,    .vee,    7, 9),
-            cue(832,  Bestiary.motherBoon, .stream, 2, 60),
-            cue(847,  Bestiary.cult,       .arc,    7, 8),
+            // atScroll  cd   species          formation  count  interval  baseX     ── MEASURED ──
+            cue(181,  Bestiary.sharlin, .stream, 6,  9, 128),  // cd 726  type24 centre column
+            cue(352,  Bestiary.sharlin, .stream, 6,  9, 128),  // cd 555  type24 centre column
+            cue(480,  Bestiary.cult,    .line,   4,  0,  64),  // cd 427  type21 row, left  (x 16‥112)
+            cue(608,  Bestiary.cult,    .line,   4,  0, 188),  // cd 299  type21 row, right (x 140‥236)
+            cue(736,  Bestiary.cult,    .line,   4,  0, 126),  // cd 171  type21 row, centre
+            cue(864,  Bestiary.cult,    .line,   4,  0, 126),  // cd  43  type21 row, centre
         ]
+        // Boss: Zanoni is a large scrolling teal-tiled FORTRESS with green "X" turret-defenders
+        // (romType 22) and a central core — not a single sprite. hp is [extract] (fortress model TBD).
         return Level(id: .galaxy, scrollSpeed: Tuning.scrollSpeed, scrollLength: 907,
                      waves: waves, boss: BossSpec(id: "zanoni", hp: 80),
                      background: BackgroundRef("galaxy"), music: "galaxy")
     }
 
     private static func cue(_ at: Double, _ make: @escaping () -> Enemy,
-                            _ formation: Formation, _ count: Int, _ interval: Double) -> WaveCue {
-        WaveCue(atScroll: at, wave: Wave(make: make, formation: formation, count: count, interval: interval))
+                            _ formation: Formation, _ count: Int, _ interval: Double,
+                            _ baseX: Double? = nil) -> WaveCue {
+        WaveCue(atScroll: at,
+                wave: Wave(make: make, formation: formation, count: count,
+                           interval: interval, baseX: baseX))
     }
 
     static func asteroid() -> Level {

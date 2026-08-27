@@ -48,8 +48,12 @@ final class WaveSpawner {
             min(max(x, margin), LOGICAL_WIDTH - margin)
         }
         switch f {
-        case .line:                                           // spread across the top at once
-            return Vec2(40 + t * (LOGICAL_WIDTH - 80), topY)
+        case .line:                                           // a fixed-spacing row centered on baseX
+            // MEASURED (Galaxy "Cult" waves): members enter in a flat horizontal row ~32 px apart,
+            // centered on the scripted anchor — not spread across the whole width.
+            let spacing = 32.0
+            let center = Double(n - 1) / 2
+            return Vec2(clampX(baseX + (Double(i) - center) * spacing, 16), topY)
         case .stream:                                         // single column, staggered in time
             return Vec2(clampX(baseX, 20), topY)
         case .vee:                                            // a V — edges lead, center trails
