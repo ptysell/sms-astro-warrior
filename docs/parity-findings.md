@@ -25,6 +25,17 @@ verified so far — the "data bridge" the build blueprint (§16) calls for.
 Read a 16-bit value as `lo | (hi << 8)` — **cast to `Int` before the shift** (a `UInt8 << 8`
 silently yields 0).
 
+### Scroll / level-progress counter (`0xC020:0xC021`)
+| Address | Format | Meaning |
+|---|---|---|
+| `0xC020` | u8 (lo) | scroll countdown — decrements 1/frame during gameplay |
+| `0xC021` | u8 (hi) | scroll countdown hi-byte; 16-bit LE with `0xC020` |
+
+The counter starts at **907** for Galaxy and counts down to 0, at which point the boss
+spawns. The VDP vertical scroll register (reg 9) advances 1 pixel per 2 counter ticks
+→ visual scroll rate = **0.5 px/frame**. Scrolling begins ~15 frames after the player
+entity appears (stage-intro delay).
+
 ### Other useful addresses
 | Address | Meaning |
 |---|---|
@@ -69,12 +80,39 @@ Notes:
 | `shipBulletSpeed` | **12 px/frame** (upward) | tracked the bullet entity's Y |
 | `shipFireInterval` | **~8 frames** between shots | counted bullet spawns |
 | movement bounds | **X ∈ [18, 242]**, screen-Y ∈ **[0, 182]** (our y ∈ [10, 192]) | pushed the ship into each wall |
-
-Still `[extract]`: scroll rate, per-enemy hp/points/hitboxes, boss scripts, power-up ladder.
+| `scrollSpeed` | **1 tick/frame** (internal counter at `0xC020`) | watched counter decrement |
+| `visualScrollPxPerTick` | **0.5 px/frame** (VDP reg 9 changes every 2 frames) | sampled VDP reg 9 |
+| Galaxy `scrollLength` | **907 ticks** (~15.1 s at 60 fps) | ran full level until countdown hit 0 |
 
 ---
 
-## 4. Coordinate systems
+## 4a. Score system
+
+Score stored as BCD at `0xC031` (the hundreds-place byte; `0xC030` appears unused or at
+a different address). `0xC233` mirrors the same value (display shadow).
+
+### Points per enemy type (from isolated single-kill frame deltas)
+| ROM type | BCD delta (in C031) | Points | Confidence |
+|---|---|---|---|
+| 34 | +2 | **200** | high (7/7 consistent) |
+| 21 | +1 | **100** | high (3/4 isolated; 1 multi-kill frame) |
+| 22 | +1 | **100** | medium (1 confirmed kill) |
+| 39 | +1 | **100** | medium (2 confirmed kills) |
+| 24 | +1 or +10 | **100–1000** | low (multi-kill frame contamination) |
+
+### Entity struct +0x13 (not pure HP)
+Offset `+0x13` in the entity struct contains packed data: upper bits hold a wave-member
+index, lower bits may hold HP. For 1-HP enemies, the whole byte goes from its spawn value
+to 0 on death, but values like 33, 65, 97 (type 34) = `(index << 5) | 1` confirm the
+packing. **HP offset and bit-width not yet isolated.**
+
+Still `[extract]`: per-enemy HP (need multi-HP enemy probe), hitboxes, boss scripts,
+power-up ladder, Asteroid/Nebula scroll lengths, wave spawn timing (atScroll positions),
+ROM-type-to-species name mapping.
+
+---
+
+## 5. Coordinate systems
 
 - **ROM:** origin top-left, **+Y down**, 256×192.
 - **Our sim (`GameSim`):** origin bottom, **+Y up**, logical 256×192.
@@ -83,7 +121,7 @@ Still `[extract]`: scroll rate, per-enemy hp/points/hitboxes, boss scripts, powe
 
 ---
 
-## 5. Emulator gotchas (vendored SMS Plus core)
+## 6. Emulator gotchas (vendored SMS Plus core)
 
 - **Input requires `sms.device[0]/[1] = DEVICE_PAD2B`** (set in `CSMSCore/shim.c`). Without
   it the core ignores `input.pad` entirely — port `0xDC` reads `0xFF` and the game never
@@ -96,7 +134,7 @@ Still `[extract]`: scroll rate, per-enemy hp/points/hitboxes, boss scripts, powe
 
 ---
 
-## 6. To reproduce
+## 7. To reproduce
 
 ```
 cd AstroWarriorKit

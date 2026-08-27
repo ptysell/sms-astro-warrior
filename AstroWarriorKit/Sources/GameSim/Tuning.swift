@@ -17,7 +17,8 @@ public enum Tuning {
     public static let shipMaxY: Double = LOGICAL_HEIGHT - 0     // screen-Y min 0  → y=192
 
     // Scroll & spawning
-    public static let scrollSpeed: Double = 1.0     // [extract] logical units / tick
+    public static let scrollSpeed: Double = 1.0     // MEASURED: 1 tick/frame (2 ticks = 1 visual pixel)
+    public static let visualScrollPxPerTick: Double = 0.5  // MEASURED: VDP scrolls 0.5 px/frame
     public static let spawnDistance: Double = 200.0 // [extract] activate-ahead distance (§6.3)
 
     // Scoring & lives

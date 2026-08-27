@@ -6,36 +6,36 @@ public enum DefaultContent {
     }
 
     static func galaxy() -> Level {
-        // Full Stage 1 — escalates through all six Galaxy types, then the Zanoni boss.
-        // atScroll, maker, formation, count, interval(ticks between members; 0 = together)
+        // Stage 1 — scrollLength MEASURED (907 ticks = ~15s). Wave cue positions are
+        // placeholders scaled to fit; real atScroll values [extract] from ROM.
         let waves: [WaveCue] = [
-            // — Opening: easy weavers, learn the movement —
-            cue(150,  Bestiary.cult,       .line,   4, 0),
-            cue(320,  Bestiary.cult,       .arc,    6, 8),
+            // — Opening: easy weavers —
+            cue(38,   Bestiary.cult,       .line,   4, 0),
+            cue(81,   Bestiary.cult,       .arc,    6, 8),
             // — Introduce shooters —
-            cue(520,  Bestiary.curos,      .stream, 4, 40),
-            cue(700,  Bestiary.cult,       .line,   6, 0),
+            cue(131,  Bestiary.curos,      .stream, 4, 40),
+            cue(176,  Bestiary.cult,       .line,   6, 0),
             // — Introduce divers —
-            cue(880,  Bestiary.sharlin,    .vee,    5, 12),
-            cue(1060, Bestiary.sacle,      .line,   4, 0),
-            cue(1240, Bestiary.curos,      .stream, 5, 36),
-            cue(1420, Bestiary.sharlin,    .vee,    6, 10),
+            cue(222,  Bestiary.sharlin,    .vee,    5, 12),
+            cue(267,  Bestiary.sacle,      .line,   4, 0),
+            cue(313,  Bestiary.curos,      .stream, 5, 36),
+            cue(358,  Bestiary.sharlin,    .vee,    6, 10),
             // — First heavy —
-            cue(1600, Bestiary.motherBoon, .stream, 1, 0),
-            cue(1660, Bestiary.cult,       .arc,    6, 8),
+            cue(403,  Bestiary.motherBoon, .stream, 1, 0),
+            cue(418,  Bestiary.cult,       .arc,    6, 8),
             // — Mid-stage mix, denser —
-            cue(1900, Bestiary.sacle,      .arc,    6, 10),
-            cue(2120, Bestiary.curos,      .stream, 6, 34),
-            cue(2340, Bestiary.sharlin,    .vee,    6, 10),
-            cue(2520, Bestiary.cult,       .line,   6, 0),
+            cue(479,  Bestiary.sacle,      .arc,    6, 10),
+            cue(534,  Bestiary.curos,      .stream, 6, 34),
+            cue(590,  Bestiary.sharlin,    .vee,    6, 10),
+            cue(635,  Bestiary.cult,       .line,   6, 0),
             // — Pre-boss gauntlet —
-            cue(2720, Bestiary.sacle,      .line,   5, 0),
-            cue(2900, Bestiary.curos,      .stream, 6, 30),
-            cue(3100, Bestiary.sharlin,    .vee,    7, 9),
-            cue(3300, Bestiary.motherBoon, .stream, 2, 60),
-            cue(3360, Bestiary.cult,       .arc,    7, 8),
+            cue(686,  Bestiary.sacle,      .line,   5, 0),
+            cue(731,  Bestiary.curos,      .stream, 6, 30),
+            cue(781,  Bestiary.sharlin,    .vee,    7, 9),
+            cue(832,  Bestiary.motherBoon, .stream, 2, 60),
+            cue(847,  Bestiary.cult,       .arc,    7, 8),
         ]
-        return Level(id: .galaxy, scrollSpeed: Tuning.scrollSpeed, scrollLength: 3600,
+        return Level(id: .galaxy, scrollSpeed: Tuning.scrollSpeed, scrollLength: 907,
                      waves: waves, boss: BossSpec(id: "zanoni", hp: 80),
                      background: BackgroundRef("galaxy"), music: "galaxy")
     }
