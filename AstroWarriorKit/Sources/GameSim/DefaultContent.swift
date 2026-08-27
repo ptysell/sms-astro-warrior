@@ -6,10 +6,12 @@ public enum DefaultContent {
     }
 
     static func galaxy() -> Level {
-        // Galaxy stage — MEASURED from the ROM (ParityProbe, driven headlessly to countdown 0).
-        // scrollLength = 907 ticks (0xC020:0xC021 starts at 907, −1/frame). The spawn schedule is
-        // fully SCROLL-SCRIPTED and DETERMINISTIC: two different bots produced an identical schedule.
-        // atScroll = 907 − (countdown at spawn). baseX = the scripted screen-x anchor (also MEASURED).
+        // Galaxy stage — MEASURED from the ROM (ParityProbe) AND cross-checked against the ROM
+        // wave-spawn table at 0x3FA3. The spawn schedule is scroll-SCRIPTED and DETERMINISTIC
+        // (two different bots produced an identical schedule). Waves are gated by scroll-row
+        // position (RAM 0xC211), NOT by the 0xC020 countdown — that counter inits to 1080 and is
+        // the separate boss timer (fires the boss at 0). "907" was a boot-timing sampling artifact.
+        // scrollLength 907 below is a stand-in that reproduces the observed stage length.
         //
         // The whole stage is just SIX waves + the fortress boss (Zanoni). Only two grunt species
         // (both confirmed by bank-4 sprite decode):
@@ -18,14 +20,18 @@ public enum DefaultContent {
         //   • romType 24 = chevron (Sharlin) — small yellow chevron; six enter stacked at centre-top
         //                          and release ~9 frames apart, each tracing a down-right curve.
         //                          1-HP, 100 pts. No fire. (Curos is a separate cross-shaped enemy.)
+        // Counts, types, member X and stagger are ROM-EXACT — decoded from the wave-spawn table
+        // at ROM 0x3FA3 (variant 0 = Galaxy), which matches the empirical run 1:1. atScroll = the
+        // empirically-measured scroll position of each wave-index. baseX = centre of the ROM X row;
+        // interval 8 = the ROM's `member×8` release stagger for the 0x18 stream.
         let waves: [WaveCue] = [
-            // atScroll  cd   species          formation  count  interval  baseX     ── MEASURED ──
-            cue(181,  Bestiary.sharlin, .stream, 6,  9, 128),  // cd 726  type24 centre column
-            cue(352,  Bestiary.sharlin, .stream, 6,  9, 128),  // cd 555  type24 centre column
-            cue(480,  Bestiary.cult,    .line,   4,  0,  64),  // cd 427  type21 row, left  (x 16‥112)
-            cue(608,  Bestiary.cult,    .line,   4,  0, 188),  // cd 299  type21 row, right (x 140‥236)
-            cue(736,  Bestiary.cult,    .line,   4,  0, 126),  // cd 171  type21 row, centre
-            cue(864,  Bestiary.cult,    .line,   4,  0, 126),  // cd  43  type21 row, centre
+            // atScroll  species          formation  count  interval  baseX   ── ROM idx / X row ──
+            cue(181,  Bestiary.sharlin, .stream, 6,  8, 128),  // idx5   0x18 ×6 centre column
+            cue(352,  Bestiary.sharlin, .stream, 6,  8, 128),  // idx7   0x18 ×6 centre column
+            cue(480,  Bestiary.cult,    .line,   4,  0,  64),  // idx8   0x15 ×4  x=16,48,80,112
+            cue(608,  Bestiary.cult,    .line,   4,  0, 192),  // idx9   0x15 ×4  x=144,176,208,240
+            cue(736,  Bestiary.cult,    .line,   4,  0, 128),  // idx10  0x15 ×4  x=80,112,144,176
+            cue(864,  Bestiary.cult,    .line,   4,  0, 128),  // idx11  0x15 ×4  x=80,112,144,176
         ]
         // Boss: Zanoni is a large scrolling teal-tiled FORTRESS with green "X" turret-defenders
         // (romType 22) and a central core — not a single sprite. hp is [extract] (fortress model TBD).
