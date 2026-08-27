@@ -25,26 +25,36 @@ verified so far — the "data bridge" the build blueprint (§16) calls for.
 Read a 16-bit value as `lo | (hi << 8)` — **cast to `Int` before the shift** (a `UInt8 << 8`
 silently yields 0).
 
-### Scroll / level-progress counter (`0xC020:0xC021`)
+### Boss timer (`0xC020:0xC021`) — NOT the scroll length
 | Address | Format | Meaning |
 |---|---|---|
-| `0xC020` | u8 (lo) | scroll countdown — decrements 1/frame during gameplay |
-| `0xC021` | u8 (hi) | scroll countdown hi-byte; 16-bit LE with `0xC020` |
+| `0xC020` | u16 LE | stage countdown timer; decrements 1/frame; **boss spawns when it hits 0** |
 
-The counter starts at **907** for Galaxy and counts down to 0, at which point the boss
-spawns. The VDP vertical scroll register (reg 9) advances 1 pixel per 2 counter ticks
-→ visual scroll rate = **0.5 px/frame**. Scrolling begins ~15 frames after the player
-entity appears (stage-intro delay).
+**Correction (the "907" was wrong):** this counter is **initialised to 1080** (`0x0438`), by the
+literal `LD HL,0x0438` at ROM `0x1DE1` → `LD (0xC020),HL` (a second phase inits `1800`/`0x0708`
+at `0x1E20`). The value **907 appears nowhere in the ROM** — it was a *boot-timing sampling
+artifact*: the counter is set during the attract sequence and is already ~907 by the time the
+probe pressed start. So `0xC020` is a **timer** that ends the stage; it is **only ever tested
+`== 0`** and does **not gate waves**. **Waves are gated by scroll-row position** (see §4c). The
+VDP vertical scroll register (reg 9) still advances **0.5 px/frame** (scroll accumulator `0xC214`
+`+= 0x80`/frame). Scrolling begins ~15 frames after the player entity appears.
 
 ### Other useful addresses
 | Address | Meaning |
 |---|---|
 | `0xC6C0` | first player-bullet slot (type `2`) |
+| `0xC211` | **wave-index** — increments with scroll rows; drives the wave-spawn table (§4c) |
+| `0xC280` | last-spawned wave-index (spawn fires when `0xC211` ≠ `0xC280`) |
+| `0xC240` | stage/variant selector — `mod 3` picks Galaxy(0)/v1/v2 in the wave table |
+| `0xC214`/`0xC223` | 16-bit scroll accumulator / per-frame scroll speed (`0x80`) |
 | `0xC286` | a per-frame countdown timer (NOT a frame counter — the RE doc's `0xC01C` is wrong) |
 
 ### Entity pool
-40 slots, base `0xC600`, stride `0x40`. Struct: `+0x00` type (0 = inactive),
-`+0x08` Y (8.8), `+0x0A` X (8.8). Same layout for every entity.
+40 slots (`0x28`), base `0xC600`, stride `0x40`. Struct: `+0x00` type (0 = inactive),
+`+0x08` Y (8.8), `+0x0A` X (8.8), `+0x13` **subtype/direction flag** (from the wave record — NOT
+packed HP, correcting an earlier note), `+0x14` spawn-X seed / pattern byte. Active wave members
+occupy the `0xCA00`-region slots. The updater alternates forward (`IX=0xC600`) / backward
+(`IX=0xCFC0`) sweeps by frame, gated by `BIT 0,(0xC200)`.
 
 ---
 
@@ -103,9 +113,9 @@ Notes:
 | `shipBulletSpeed` | **12 px/frame** (upward) | tracked the bullet entity's Y |
 | `shipFireInterval` | **~8 frames** between shots | counted bullet spawns |
 | movement bounds | **X ∈ [18, 242]**, screen-Y ∈ **[0, 182]** (our y ∈ [10, 192]) | pushed the ship into each wall |
-| `scrollSpeed` | **1 tick/frame** (internal counter at `0xC020`) | watched counter decrement |
+| `scrollSpeed` | **0.5 px/frame** (accum `0xC214 += 0x80`/frame) | scroll engine at `0x0D44` |
 | `visualScrollPxPerTick` | **0.5 px/frame** (VDP reg 9 changes every 2 frames) | sampled VDP reg 9 |
-| Galaxy `scrollLength` | **907 ticks** (~15.1 s at 60 fps) | ran full level until countdown hit 0 |
+| Galaxy stage length | boss on the **1080-init `0xC020` timer** hitting 0 (~880 scroll-frames as observed; "907 ticks" was a boot-sampling artifact — see the boss-timer note) | drove to boss |
 
 ---
 
@@ -123,20 +133,21 @@ a different address). `0xC233` mirrors the same value (display shadow).
 | 39 | +1 | **100** | medium (2 confirmed kills) |
 | 24 | +1 or +10 | **100–1000** | low (multi-kill frame contamination) |
 
-### Entity struct +0x13 (not pure HP)
-Offset `+0x13` in the entity struct contains packed data: upper bits hold a wave-member
-index, lower bits may hold HP. For 1-HP enemies, the whole byte goes from its spawn value
-to 0 on death, but values like 33, 65, 97 (type 34) = `(index << 5) | 1` confirm the
-packing. **HP offset and bit-width not yet isolated.**
+### Entity struct +0x13 — subtype/direction flag (NOT packed HP)
+Correcting an earlier guess: `+0x13` is loaded straight from the wave record's `b1` byte
+(§4c) and is a **subtype / direction flag** (`0x00` or `0x01` for the Galaxy grunts), not
+packed HP. Per-enemy HP for the heavies/boss-core is still `[extract]` (grunts are 1-HP).
 
 ---
 
 ## 4b. Galaxy stage layout — full wave schedule (MEASURED)
 
-Driven headlessly to countdown 0 (`ParityProbe` `census()`), then **verified deterministic**:
-two different bots (an active dodger and a passive centre-holder) produced an **identical**
-spawn schedule. Spawning is **purely scroll-scripted** — waves fire on schedule whether or not
-you clear the previous one — so this schedule is authoritative. `atScroll = 907 − countdown`.
+Driven headlessly (`ParityProbe` `census()`), then **verified deterministic**: two different
+bots (an active dodger and a passive centre-holder) produced an **identical** spawn schedule.
+Spawning is **scroll-scripted** — waves fire whether or not you clear the previous one — and is
+**independently confirmed by the ROM wave-spawn table** (§4c) which decodes to this exact schedule.
+`atScroll` below is the measured scroll position of each wave (the "countdown" column is the raw
+`0xC020` value in one boot — see the boss-timer note on why it isn't the scroll length).
 
 The entire Galaxy stage is **six waves of two grunt species, then the fortress boss** — far
 sparser than the 19-wave placeholder that preceded this measurement.
@@ -172,8 +183,45 @@ and a dark circular **core** sits at the bottom. This is the classic Astro-Warri
 base. A faithful boss model (fortress tilemap + core HP + turret script) is still `[extract]`.
 
 Still `[extract]`: per-enemy HP for the heavies + boss core, hitboxes, boss scripts,
-power-up ladder effects, Asteroid/Nebula scroll lengths + wave schedules, and the official
-name for romType 24. **Galaxy grunts (Cult/chevron) are confirmed 1-HP.**
+power-up ladder effects, per-zone stage lengths, and official names for most non-Galaxy types.
+**Galaxy grunts (Cult/chevron) are confirmed 1-HP.**
+
+---
+
+## 4c. Wave-spawn table (ROM `0x3FA3`) — the whole game's schedule, decoded
+
+The spawner routine at ROM **`0x3F2B`** runs each frame and emits a wave whenever the scroll-row
+wave-index `0xC211` differs from the last-spawned `0xC280`. It reads a **3-level table**:
+
+1. **Root `0x3FA3`** — three variant pointers `→0x3FA9, →0x4029, →0x40A9`, selected by
+   `0xC240 mod 3`. **Variant 0 = Galaxy** (decodes to the measured schedule, 1:1); variants 1 & 2
+   are the other two stages (Asteroid / Nebula — different rosters).
+2. **Level-2 list** (per variant) — one word per wave-index; empty indices share a terminator
+   pointer (e.g. Galaxy `0x4129`).
+3. **Level-3 records** — 4 bytes each `[type, b1, b2, b3]` → entity `+0x00/+0x13/+0x14/+0x15`;
+   a `type == 0` byte terminates the wave. For **line** enemies `b2 = spawn X` (spacing `0x20` =
+   32 px); for the **stream** enemy `b3 = member×8` release stagger.
+
+**Variant 0 (Galaxy) — decoded, matches the empirical run exactly:**
+
+| waveIdx | count×type | member X (`b2`) / stagger (`b3`) |
+|---|---|---|
+| 5, 7 | 6× `0x18` (chevron) | X ordinal 1‥6, stagger `8,16,24,32,40,48` |
+| 8 | 4× `0x15` (Cult) | X = `10 30 50 70` (16,48,80,112) |
+| 9 | 4× `0x15` | X = `90 B0 D0 F0` (144,176,208,240) |
+| 10, 11 | 4× `0x15` | X = `50 70 90 B0` (80,112,144,176) |
+| 12–14 | 4× `0x16` (turret) | fortress-defender phase |
+| 16–23 | more `0x18`/`0x15`/`0x27` | extended / later-loop indices |
+
+**Variants 1 & 2 decode cleanly too** (types are byte values; not yet name-mapped): variant 1 uses
+`0x21` (×8), `0x1D` (×6–7), `0x24` (the "+/cross" = **Curos**, so Curos is a variant-1 enemy, not
+Galaxy), `0x1E`, `0x17`; variant 2 uses `0x26`, `0x1A`, `0x1F` (×7–8, staggered), `0x20`, `0x25`.
+Full per-index dumps are reproducible from `0x3FA3` with the record format above. This means the
+**entire game's wave content is statically extractable** — the remaining gap for Asteroid/Nebula
+is anchoring each wave-index to a scroll position and mapping the type bytes to species.
+
+> **hex vs decimal caution:** the probe logs the `+0x00` type in **decimal**. Galaxy's chevron is
+> decimal `24` = **`0x18`**; the *hex* `0x24` (= decimal 36) is a different, variant-1 enemy (Curos).
 
 ---
 
