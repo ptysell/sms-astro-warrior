@@ -52,7 +52,8 @@ public final class World {
 
     // —— Spawning / queries used by the director & collision ——
     public func spawn(_ wave: Wave) {
-        let baseX = 40 + rng.unit() * (LOGICAL_WIDTH - 80)   // formation anchor (varies per wave)
+        // Real ROM uses a scripted per-wave anchor (MEASURED); RNG only for placeholder content.
+        let baseX = wave.baseX ?? (40 + rng.unit() * (LOGICAL_WIDTH - 80))
         spawner.enqueue(wave, baseX: baseX)
     }
 

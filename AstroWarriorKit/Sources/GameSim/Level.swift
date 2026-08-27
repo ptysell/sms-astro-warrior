@@ -8,8 +8,13 @@ public struct Wave {
     public let formation: Formation
     public let count: Int
     public let interval: Double                     // stagger between members (ticks)
-    public init(make: @escaping () -> Enemy, formation: Formation, count: Int, interval: Double) {
-        self.make = make; self.formation = formation; self.count = count; self.interval = interval
+    /// Scripted horizontal anchor (screen-x) for the formation. The real ROM places each
+    /// wave at a fixed x (MEASURED), not randomly; nil falls back to RNG for placeholder content.
+    public let baseX: Double?
+    public init(make: @escaping () -> Enemy, formation: Formation, count: Int,
+                interval: Double, baseX: Double? = nil) {
+        self.make = make; self.formation = formation; self.count = count
+        self.interval = interval; self.baseX = baseX
     }
 }
 
