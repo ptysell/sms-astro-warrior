@@ -26,6 +26,7 @@ public final class SMSPlusCore: ReferenceCore {
 
     public func readRAM(_ address: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_ram(Int32(address))) }
     public func readPort(_ port: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_port(Int32(port))) }
+    public func readVDPReg(_ reg: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_vdp_reg(Int32(reg))) }
 
     public func step(buttons: RefButtons, pause: Bool) {
         guard loaded else { return }

@@ -111,3 +111,8 @@ int sms_core_ram(int addr) {
 int sms_core_port(int port) {
     return g_loaded ? pio_port_r(port) : 0xFF;
 }
+
+int sms_core_vdp_reg(int reg) {
+    if (!g_loaded || reg < 0 || reg > 15) return 0;
+    return vdp.reg[reg];
+}

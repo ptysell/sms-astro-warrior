@@ -29,6 +29,9 @@ int sms_core_ram(int addr);
 // Raw controller port read (0xDC / 0xDD) — diagnostics.
 int sms_core_port(int port);
 
+// Peek a VDP register (0–15). Reg 9 = vertical scroll.
+int sms_core_vdp_reg(int reg);
+
 #define SMSB_UP    0x01u
 #define SMSB_DOWN  0x02u
 #define SMSB_LEFT  0x04u
