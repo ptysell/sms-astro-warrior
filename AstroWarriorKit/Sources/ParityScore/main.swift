@@ -45,6 +45,89 @@ let N = Int(ProcessInfo.processInfo.environment["ASTRO_FRAMES"] ?? "") ?? 1500
 let core = SMSPlusCore()
 guard core.load(rom: data) else { fputs("ParityScore: ROM load failed\n", stderr); exit(1) }
 
+let slots0 = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
+func isFX0(_ t: Int) -> Bool { t == 11 || t == 12 || t == 19 }
+func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX0(t) }
+
+// ── CENSUS MODE (`swift run ParityScore census [frames]`) ──────────────────────────────────
+// Dumps the ROM's REAL Galaxy schedule, keyed by wave-index (0xC211): for each index, the
+// enemy romType(s), member count, and each member's spawn X. This is GROUND TRUTH for building
+// the Galaxy WaveCue array — measured, not decoded. Runs the dodge bot so the field advances.
+@MainActor func census(frames: Int) {
+    func ram(_ a: Int) -> Int { Int(core.readRAM(a)) }
+    func word(_ a: Int) -> Double { Double(ram(a) | (ram(a + 1) << 8)) / 256.0 }
+    func dodgeC() -> RefButtons {
+        let px = word(0xC60A), py = word(0xC608)
+        guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated → neutral input
+        var threatX: Double? = nil, best = 1e9
+        for s in slots0 { let t = ram(s); if !isEnemy0(t) { continue }
+            let ex = word(s + 0x0A), ey = word(s + 0x08), dy = py - ey
+            if dy > -24, dy < 90 { let d = abs(ex - px) + dy * 0.25; if d < best { best = d; threatX = ex } } }
+        var b: RefButtons = [.fire]
+        if let tx = threatX { b.insert(tx > px ? .left : .right) }
+        if py < 150 { b.insert(.down) } else if py > 176 { b.insert(.up) }
+        if px < 40 { b.remove(.left); b.insert(.right) }
+        if px > 216 { b.remove(.right); b.insert(.left) }
+        return b
+    }
+    core.reset()
+    for _ in 0..<300 { core.step(buttons: [], pause: false) }
+    for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
+    for _ in 0..<8   { core.step(buttons: [], pause: false) }
+    var gspin = 0
+    while word(0xC60A) < 1 && gspin < 120 { core.step(buttons: [], pause: false); gspin += 1 }  // player populated
+
+    final class Spawn { let idx: Int; let frame: Int; let type: Int; var x: Int
+        init(idx: Int, frame: Int, type: Int) { self.idx = idx; self.frame = frame; self.type = type; x = -1 } }
+    var spawns: [Spawn] = []
+    var idxOnset: [Int: Int] = [:]                       // wave-index → first frame it appears
+    var lastType = [Int](repeating: 0, count: slots0.count)
+    var pending: [(slot: Int, at: Int, spawn: Spawn)] = []   // read X a few frames after spawn (pos settles)
+    var prevIdx = -1, maxIdx = 0
+    for f in 0..<frames {
+        core.step(buttons: dodgeC(), pause: false)
+        let idx = ram(0xC211)
+        maxIdx = max(maxIdx, idx)
+        if idx == 0 && maxIdx > 3 { break }              // game-over reset → stop the census
+        if idx != prevIdx { if idxOnset[idx] == nil { idxOnset[idx] = f }; prevIdx = idx }
+        pending.removeAll { p in if f >= p.at { p.spawn.x = Int(word(p.slot + 0x0A)); return true }; return false }
+        for (i, s) in slots0.enumerated() {
+            let t = ram(s), prev = lastType[i]
+            if t != prev {
+                if isEnemy0(t) && !isEnemy0(prev) {
+                    let sp = Spawn(idx: idx, frame: f, type: t)
+                    spawns.append(sp); pending.append((s, f + 5, sp))
+                }
+                lastType[i] = t
+            }
+        }
+    }
+    // Aggregate by wave-index, then by type.
+    let byIdx = Dictionary(grouping: spawns, by: { $0.idx })
+    print("=== ROM GALAXY SCHEDULE (measured, dodge bot, \(frames)f) ===")
+    print("idx  onset  spawn  type×n  member-X (spawn order)")
+    for idx in byIdx.keys.sorted() {
+        let evs = byIdx[idx]!.sorted { $0.frame < $1.frame }
+        let onset = idxOnset[idx] ?? -1
+        let firstSpawn = evs.first!.frame
+        let byType = Dictionary(grouping: evs, by: { $0.type })
+        let parts = byType.keys.sorted().map { t -> String in
+            let xs = byType[t]!.sorted { $0.frame < $1.frame }.map { String($0.x) }
+            return String(format: "t%d(0x%02X)×%d X[%@]", t, t, byType[t]!.count, xs.joined(separator: ","))
+        }
+        print(String(format: "%3d  %5d  %5d  %@", idx, onset, firstSpawn, parts.joined(separator: "  |  ")))
+    }
+    let types = Set(spawns.map { $0.type }).sorted()
+    print("distinct enemy romTypes seen: \(types.map { String(format: "0x%02X(%d)", $0, $0) }.joined(separator: " "))")
+    print("last idx reached: \(byIdx.keys.max() ?? -1)   total spawns: \(spawns.count)")
+}
+
+if CommandLine.arguments.contains("census") {
+    let fr = CommandLine.arguments.compactMap { Int($0) }.first ?? 9000
+    census(frames: fr)
+    exit(0)
+}
+
 let slots = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
 @MainActor func ram(_ a: Int) -> Int { Int(core.readRAM(a)) }
 @MainActor func word(_ a: Int) -> Double { Double(ram(a) | (ram(a + 1) << 8)) / 256.0 }
@@ -58,6 +141,7 @@ func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(
 // ROM only — we RECORD the buttons it presses so we can replay them open-loop into the sim.
 @MainActor func dodge() -> RefButtons {
     let px = word(0xC60A), py = word(0xC608)
+    guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated (0,0) → neutral, no phantom down+right
     var threatX: Double? = nil, best = 1e9
     for s in slots {
         let t = ram(s); if !isEnemy(t) { continue }
@@ -86,6 +170,13 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     for _ in 0..<300 { core.step(buttons: [], pause: false) }
     for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
     for _ in 0..<8   { core.step(buttons: [], pause: false) }
+    // Spin until the player entity's position words are populated (they read (0,0) for ~9 frames
+    // after gameplay starts). This aligns tape-frame-0 with the ship's real (128,144) spawn — without
+    // it the dodge bot records phantom down+right against a (0,0) reading and the sim (live from frame 0)
+    // obeys it, injecting a constant ~9.5px offset AND a ~9-frame spawn-timeline lead. (Verified: ROM entity
+    // XY IS the 16x16 sprite centre — VDP draw @0x0416/frame-list 0x129A — so there is NO coordinate bias.)
+    var guardSpin = 0
+    while romPlayer().x < 1 && guardSpin < 120 { core.step(buttons: [], pause: false); guardSpin += 1 }
     var tape: [RefButtons] = [], frames: [Frame] = []
     for _ in 0..<N {
         let b = dodge()
