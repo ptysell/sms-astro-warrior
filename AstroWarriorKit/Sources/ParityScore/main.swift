@@ -58,6 +58,7 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     func word(_ a: Int) -> Double { Double(ram(a) | (ram(a + 1) << 8)) / 256.0 }
     func dodgeC() -> RefButtons {
         let px = word(0xC60A), py = word(0xC608)
+        guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated → neutral input
         var threatX: Double? = nil, best = 1e9
         for s in slots0 { let t = ram(s); if !isEnemy0(t) { continue }
             let ex = word(s + 0x0A), ey = word(s + 0x08), dy = py - ey
@@ -73,6 +74,8 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     for _ in 0..<300 { core.step(buttons: [], pause: false) }
     for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
     for _ in 0..<8   { core.step(buttons: [], pause: false) }
+    var gspin = 0
+    while word(0xC60A) < 1 && gspin < 120 { core.step(buttons: [], pause: false); gspin += 1 }  // player populated
 
     final class Spawn { let idx: Int; let frame: Int; let type: Int; var x: Int
         init(idx: Int, frame: Int, type: Int) { self.idx = idx; self.frame = frame; self.type = type; x = -1 } }
@@ -138,6 +141,7 @@ func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(
 // ROM only — we RECORD the buttons it presses so we can replay them open-loop into the sim.
 @MainActor func dodge() -> RefButtons {
     let px = word(0xC60A), py = word(0xC608)
+    guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated (0,0) → neutral, no phantom down+right
     var threatX: Double? = nil, best = 1e9
     for s in slots {
         let t = ram(s); if !isEnemy(t) { continue }
@@ -166,6 +170,13 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     for _ in 0..<300 { core.step(buttons: [], pause: false) }
     for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
     for _ in 0..<8   { core.step(buttons: [], pause: false) }
+    // Spin until the player entity's position words are populated (they read (0,0) for ~9 frames
+    // after gameplay starts). This aligns tape-frame-0 with the ship's real (128,144) spawn — without
+    // it the dodge bot records phantom down+right against a (0,0) reading and the sim (live from frame 0)
+    // obeys it, injecting a constant ~9.5px offset AND a ~9-frame spawn-timeline lead. (Verified: ROM entity
+    // XY IS the 16x16 sprite centre — VDP draw @0x0416/frame-list 0x129A — so there is NO coordinate bias.)
+    var guardSpin = 0
+    while romPlayer().x < 1 && guardSpin < 120 { core.step(buttons: [], pause: false); guardSpin += 1 }
     var tape: [RefButtons] = [], frames: [Frame] = []
     for _ in 0..<N {
         let b = dodge()
