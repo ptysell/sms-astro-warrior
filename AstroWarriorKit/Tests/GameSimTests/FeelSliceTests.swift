@@ -153,7 +153,7 @@ struct FeelSliceTests {
     @Test func enemiesDescend() {
         let w = World()
         w.mode = .playing
-        let e = Bestiary.curos()                    // Descend movement
+        let e = Bestiary.cult()                     // Descend movement
         e.position = Vec2(128, 150); e.anchorX = 128
         w.add(e)
         let y0 = e.position.y
