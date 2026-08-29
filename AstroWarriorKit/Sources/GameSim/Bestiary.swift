@@ -12,14 +12,6 @@ public enum Bestiary {
               movement: Descend(speed: 1.5),
               attack: NoAttack())
     }
-    public static func curos() -> Enemy {          // "+/cross" sprite (bank-4 tile 40); [extract] D3
-        // NOTE: Curos is the cross-shaped enemy — NOT the Galaxy chevron. It was not observed in
-        // Galaxy stage 1; stats below remain placeholder until it is measured in a later wave/zone.
-        Enemy(at: .zero, sprite: SpriteRef("curos"), hitbox: .circle(r: 7),
-              hp: 1, points: 150,
-              movement: Descend(speed: 0.9),
-              attack: AimedShot(interval: 90, bulletSpeed: 2.4))
-    }
     public static func sharlin() -> Enemy {        // romType 0x18 (24) @0x4A5F — chevron stream grunt, 1-HP, 100pts (ROM-EXACT)
         // Six spawn stacked at centre (X=128) and release per +0x15 stagger, each on a scripted flight
         // path (ptrs @0x4B6A → slot2 vel tbl @0xA000) curving down-right ~1.7 px/f (curve = TODO).
@@ -66,24 +58,10 @@ public enum Bestiary {
               movement: Weave(speed: 2, amp: 32, freq: 0.05),
               attack: AimedShot(interval: 40, bulletSpeed: 2))
     }
-    public static func sacle() -> Enemy {          // wide weaver that also shoots
-        Enemy(at: .zero, sprite: SpriteRef("sacle"), hitbox: .circle(r: 7),
-              hp: 2, points: 200,
-              movement: Weave(speed: 0.8, amp: 34, freq: 0.05),
-              attack: AimedShot(interval: 110, bulletSpeed: 2.2))
-    }
-    public static func motherBoon() -> Enemy {     // heavy, ring-fires
-        Enemy(at: .zero, sprite: SpriteRef("mother_boon"), hitbox: .circle(r: 10),
-              hp: 6, points: 500,
-              movement: Descend(speed: 0.5),
-              attack: RingFire(interval: 130, count: 8, bulletSpeed: 2.0))
-    }
-    public static func spindow() -> Enemy {        // 24×24, boss-class ring-firer
-        Enemy(at: .zero, sprite: SpriteRef("spindow"), hitbox: .aabb(half: Vec2(12, 12)),
-              hp: 8, points: 1000,
-              movement: Descend(speed: 0.5),
-              attack: RingFire(interval: 100, count: 10, bulletSpeed: 1.8))
-    }
+    // (Removed the pre-decode speculative Galaxy guesses curos/sacle/motherBoon/spindow — unreferenced
+    //  and superseded by the ROM-decoded roster above. The real Galaxy roster is cult/zanix/sharlin/
+    //  gyron/kyra/delta; see docs/parity-findings.md §4b. Curos = the "+/cross" sprite (bank-4 tile 40),
+    //  not observed in Galaxy stage-1 — re-add from the decode if a later stage/loop needs it.)
 
     // —— Asteroid Zone ——  (romType handlers 0x17/0x1B/0x1D/0x1E/0x21/0x24, bank1; 2026-08 decode,
     // re-verified against the ROM tables. hp/points/hitbox/indestructible ROM-EXACT; movement/attack best-fit;

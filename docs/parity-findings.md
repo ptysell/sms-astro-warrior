@@ -121,8 +121,11 @@ Notes:
 
 ## 4a. Score system
 
-Score stored as BCD at `0xC031` (the hundreds-place byte; `0xC030` appears unused or at
-a different address). `0xC233` mirrors the same value (display shadow).
+Score is BCD. **CORRECTION (session 4):** `0xC030–0xC032` is the **HIGH-SCORE** buffer; the **live
+in-play score** is `0xC232–0xC234` (`0xC234` = fixed `00` low byte). During a first playthrough the
+two track together (score ≥ hi-score), which is why hundreds-place deltas read cleanly at `0xC031`
+below. The scoring routine `0x5C52` reads the reward index `(IX+0x1B)` → `[0x5C60 + idx*2]` (BCD):
+idx1=100, idx2=200, idx3=1000, idx4=5000.
 
 ### Points per enemy type (from isolated single-kill frame deltas)
 | ROM type | BCD delta (in C031) | Points | Confidence |
@@ -140,7 +143,11 @@ packed HP. Per-enemy HP for the heavies/boss-core is still `[extract]` (grunts a
 
 ---
 
-## 4b. Galaxy stage layout — full wave schedule (MEASURED)
+## 4b. Galaxy stage layout — initial wave schedule (MEASURED)
+
+> **Superseded by §4e for the current state.** This section records the initial idx5..11 measurement.
+> The **full idx5..60** schedule was later decoded, census-crosschecked, and integrated into
+> `DefaultContent.galaxy()` — see §4e.
 
 Driven headlessly (`ParityProbe` `census()`), then **verified deterministic**: two different
 bots (an active dodger and a passive centre-holder) produced an **identical** spawn schedule.
@@ -347,6 +354,48 @@ Boss-spawn frame = `atScroll(idx62) = 128*62 - 544 = 7392` for both stages (last
 Ast / idx59 @7008 Neb, so the boss fires after all grunts). Alternatives: intrinsic-from-zero
 `7936`; idx63 gate `7520`; scripted-boss idx65 `7776`. Galaxy's own `907` should likewise extend to
 its full idx5..62 schedule (~7392) for consistency (out of scope for the Asteroid/Nebula pass).
+
+---
+
+## 4e. Session 4 — parity yardstick, integration, and corrections
+
+**The measurement backbone.** `swift run ParityScore` (in `AstroWarriorKit`) drives the real ROM and
+the headless `GameSim.World` off **one shared open-loop tape** (captured from the ROM's `dodge` bot)
+and scores them frame-for-frame: player-position error, live enemy population, spawn timeline, an
+input-independent **cumulative-spawn** count (pure schedule fidelity), and a headline **DIVERGENCE**
+composite (`meanPlayerErr + 6·mean|Δpop|`). `swift run ParityScore census [frames]` dumps the ROM's
+real schedule keyed by wave-index (`0xC211`). Deterministic; re-run after any sim change.
+
+**Result (Galaxy, 1500-frame tape): DIVERGENCE 30.5 → 9.2.** player error 13.5 → **0.8 px**;
+sim-empty-while-ROM-populated 493 → **90** frames; cumulative spawns **ROM 36 / SIM 40** (the sim
+emits the full idx5..14 schedule). The residual is now **combat / enemy-lifetime fidelity** (inferred
+movement speeds + player-weapon effectiveness), **not** the schedule.
+
+**Corrections & new facts (verified via z80dis + live census, adversarial workflow):**
+
+- **Player entity XY IS the 16×16 sprite CENTRE** — VDP draw @`0x0416`, 2-piece frame list @`0x129A`,
+  reg1=`0xA2` (8×16 sprites), SAT copied to VRAM with no bias. So ROM XY already matches the sim's
+  centre convention: **there is NO coordinate/sprite-origin offset.** (This killed a "sprite-corner"
+  hypothesis.) §5's "sprite centre" note is confirmed.
+- **Harness artifact (the real cause of the old ~13.5 px offset):** for ~9 frames after the 300/5/8
+  boot, the player position words @`0xC608/0xC60A` read `(0,0)` (type byte is already 1, XY not yet
+  populated). A dodge bot reading `(0,0)` presses phantom down+right → poisons a recorded tape; the
+  sim (live from frame 0) obeys it → a constant offset. **Fix:** spin until `word(0xC60A) ≥ 1` before
+  recording/censusing. Drops player error to ~0.8 px.
+- **Handlers located:** `0x22` → **`0x5150`** (dives to the player row `0xC609` then homes on `0xC60B`);
+  `0x27` → **`0x5577`** (accelerating aimed diver; NOT the end-boss core — that is `0x28` @`0x5624`
+  with the real 8-hit `+0x28` counter). Both single-hit death (`CALL 0x5be3` / `JP nz,0x5c1b`).
+- **Loop-gated fire:** every Galaxy grunt's aimed shot (bullet type `0x14` @`0x18EE`, aimed, ~1.9 px/f)
+  is gated behind `0xC240 ≥ 3` (via `0x5bf2`/`0x5c06`) → **silent on the first (stage-1) loop**, so
+  faithful stage-1 = `NoAttack`. **EXCEPTION: `0x19` fires UNGATED on loop 1** (the `0xC240` check only
+  tightens its cadence on loops ≥ 3).
+- **Hitboxes** from table `0x1B1C + (IX+3)*4` = `[Yoff,H,Xoff,W]`: `0x15`=16×16(r8), `0x16`=14×14(r7),
+  `0x18`=8×8(r4), `0x19`=20×20(r10), `0x22`=16×16(r8), `0x27`=12×12(r6).
+- **Galaxy full idx5..60 schedule** decoded (variant0) and census-crosschecked (PASSED). Clean
+  `atScroll = 128*idx − 546` (idx ≥ 7), idx5 = 179 (+85 warm-up). Now wired into
+  `DefaultContent.galaxy()` (scrollLength 7390). Species: `0x15` cult, `0x16` zanix (the "X" turret),
+  `0x18` sharlin (centre streams), `0x19` delta, `0x22` kyra, `0x27` gyron; boss `0x28` ×5 @ idx62.
+  Empty rests: idx6,15,33,35,61.
 
 ---
 
