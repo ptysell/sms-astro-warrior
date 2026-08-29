@@ -1,8 +1,12 @@
 # Asteroid & Nebula — staged integration (paste-ready)
 
-> **Status: NOT yet integrated into the sim.** This is the paste-ready output of the
-> 2026-08-29 ROM-extraction pass, parked here so the next session can wire it in by
-> copy-paste. The *findings* behind it are in [`parity-findings.md`](parity-findings.md) §4d.
+> **Status: ✅ INTEGRATED (session 4, PR #8).** These schedules + Bestiary bodies are now wired into
+> `DefaultContent.asteroid()` / `.nebula()` and `GameSim/Bestiary.swift`, with `scrollLength = 7392`
+> on both. They were re-verified against the ROM tables during integration (a dedicated adversarial
+> agent found **zero discrepancies**). NOTE: Asteroid/Nebula parity is **not yet MEASURED** — the
+> dodge-bot lockstep tape can't reach these stages (Galaxy boss unbeaten), so a stage-warp harness is
+> still needed to score them (see [`astro-warrior-worksweep-plan.md`](astro-warrior-worksweep-plan.md) §0).
+> This file is retained as the decode record. The *findings* are in [`parity-findings.md`](parity-findings.md) §4d.
 > Source ROM `AstroWarrior.sms` md5 `e645faa5628caab5129383fdbf4df090`.
 >
 > **Confidence tags:** romType / count / per-member X and all HP/points/hitbox values are
@@ -11,7 +15,9 @@
 > names by hitbox-size/role, only tinker=0x21 and arbleby=0x1A anchored). See the open
 > questions at the bottom before treating names or tuning as settled.
 
-## Integration checklist (the "later" task)
+## Integration checklist — ✅ DONE (session 4, PR #8)
+
+All five steps below were completed and the build + `ParityScore` verified. Retained for the record.
 
 1. Paste the **Asteroid waves** block into `DefaultContent.asteroid()` and the **Nebula waves**
    block into `DefaultContent.nebula()` (replacing `waves: []`), following the existing
