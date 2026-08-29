@@ -7,6 +7,30 @@ This is the orchestration plan; the blueprint is the spec.
 
 ---
 
+## 0. Status (updated 2026-08-29)
+
+Data-extraction river is well ahead of the code river — most of the `[extract]` numbers now exist:
+
+| Package | State | Where |
+|---|---|---|
+| **D1 Ship kinematics** | ✅ done | `Tuning.swift` (speed/bounds/fire) |
+| **D3 Bestiary stats** | ✅ HP/points/hitbox/fire/movement ROM-EXACT for all 3 zones; species **names provisional** | [`parity-findings.md`](parity-findings.md) §4d |
+| **D4 Scroll & spawn** | ✅ scroll cadence (128 frames/wave-idx), variant selection, wave-table geometry | §4c/§4d |
+| **D5 Wave layout** | ✅ **all 3 zones fully decoded + independently verified** (192 waves, 0 discrepancies) | §4b (Galaxy), §4d (Ast/Neb) |
+| **D7 Boss scripts** | ◑ structure decoded (multi-part entity finales + a scripted end-boss); per-phase attack scripts (`0xA858`/`0xD030`) **not yet decoded** | §4d |
+| **D8 Scoring** | ✅ points + reward-index table @`0x5C60` | §4a/§4d |
+| **D2 Weapon forms / D6 Power-up ladder** | ☐ thresholds known (12…120), effects pending | — |
+
+**Staged, not yet integrated:** Asteroid/Nebula `WaveCue` arrays + Bestiary bodies are paste-ready
+in [`asteroid-nebula-integration.md`](asteroid-nebula-integration.md) — this is the next code-river
+task (Wave-3 C2 + C3–C5). Deferred: multi-part boss model (Wave-3 C6–C8 needs a richer `BossSpec`),
+carrier/self-split movement primitives, per-member explicit-X formation, and species-name confirmation.
+
+Tooling note: `z80dis` (Python) is the disassembler of record; the ROM decodes with file-offset ==
+CPU-address in banks 0–1. The repo is now a git repo with a PR/merge workflow (§8.5 updated).
+
+---
+
 ## 1. The one fact that governs all parallelism
 
 The blueprint's architecture (§4, §12) has a single dependency direction:
@@ -215,8 +239,8 @@ All behind flags, all leaf changes (the seam guarantees the sim is untouched, §
    collide with the code agents.
 5. **Worktree isolation per agent.** If orchestrated via the `Workflow` tool, give
    file-mutating agents `isolation: "worktree"` so parallel writes can't conflict;
-   merge at each wave barrier. (Note: this dir is **not currently a git repo** —
-   `git init` first if you want worktree isolation.)
+   merge at each wave barrier. (This dir **is** a git repo now, with a PR/merge
+   workflow and `.claude/worktrees/` isolation already in use.)
 6. **Wave barriers.** Wave N+1 starts only when Wave N's exit criterion is met. The
    only true barriers are Wave 0→1 and (partially) 1→2. Data/Art ignore barriers.
 
