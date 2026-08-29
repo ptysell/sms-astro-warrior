@@ -164,6 +164,11 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     let enemyTypes: [Int]            // types present this frame (for the timeline)
 }
 
+// Cumulative-spawn totals — input-INDEPENDENT (a spawn happens regardless of who kills what), so
+// they isolate SCHEDULE fidelity from the combat/kill confound in the live-population metric.
+var romSpawnTotal = 0
+var simSpawnTotal = 0
+
 @MainActor func captureROM() -> (tape: [RefButtons], frames: [Frame]) {
     core.reset()
     // Boot: title → gameplay (same sequence ParityProbe uses).
@@ -178,12 +183,18 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     var guardSpin = 0
     while romPlayer().x < 1 && guardSpin < 120 { core.step(buttons: [], pause: false); guardSpin += 1 }
     var tape: [RefButtons] = [], frames: [Frame] = []
+    var lastType = [Int](repeating: 0, count: slots.count)   // for cumulative-spawn counting
     for _ in 0..<N {
         let b = dodge()
         tape.append(b)
         core.step(buttons: b, pause: false)
         var count = 0, types: [Int] = []
-        for s in slots { let t = ram(s); if isEnemy(t) { count += 1; types.append(t) } }
+        for (i, s) in slots.enumerated() {
+            let t = ram(s)
+            if isEnemy(t) { count += 1; types.append(t) }
+            if isEnemy(t) && !isEnemy(lastType[i]) { romSpawnTotal += 1 }   // 0→enemy transition = one spawn
+            lastType[i] = t
+        }
         let p = romPlayer()
         frames.append(Frame(px: p.x, py: p.y, alive: romPlayerAlive(),
                             waveIdx: romWaveIdx(), enemyCount: count, enemyTypes: types))
@@ -205,9 +216,12 @@ struct SimFrame { let px, py: Double; let alive: Bool; let scrollY: Double; let 
     let world = World()
     world.step(Intent(fire: true))          // flip title → playing (analog of the ROM boot)
     var out: [SimFrame] = []
+    var seen = Set<ObjectIdentifier>()      // exact cumulative spawns; retain in `held` so a reaped
+    var held: [Enemy] = []                  // Enemy's address can't be reused (which would collide the id)
     for b in tape {
         world.step(intent(from: b))
         let enemies = world.entities.compactMap { $0 as? Enemy }
+        for e in enemies where seen.insert(ObjectIdentifier(e)).inserted { simSpawnTotal += 1; held.append(e) }
         // sim logical → screen px (y down), matching the ROM's coordinate frame
         out.append(SimFrame(px: world.player.position.x,
                             py: LOGICAL_HEIGHT - world.player.position.y,
@@ -274,6 +288,7 @@ ENEMY POPULATION  (active enemies on field, per frame)
     peak count        : ROM \(f0(romPeak))     SIM \(f0(simPeak))
     mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame
     frames sim-empty  : \(f0(framesSimEmptyRomNot)) / \(f0(measured))  (ROM had enemies, sim had none)
+    cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← input-independent → pure SCHEDULE fidelity
 
 SPAWN TIMELINE  (first frame the field holds ≥k enemies)
         k :   1    2    3    4    6    8
