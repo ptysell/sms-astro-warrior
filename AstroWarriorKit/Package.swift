@@ -72,6 +72,10 @@ let package = Package(
         // Headless measurement + parity tool — drives the ROM and our sim together.
         .executableTarget(name: "ParityProbe", dependencies: ["ReferenceEmu", "GameSim", "GameInput"]),
 
+        // The parity YARDSTICK — scores our sim against the ROM (position / population /
+        // spawn-timeline divergence) off one shared open-loop tape. Re-run after sim changes.
+        .executableTarget(name: "ParityScore", dependencies: ["ReferenceEmu", "GameSim"]),
+
         // Side-by-side parity debugger: ROM (left) vs our sim (right), one input stream.
         .target(
             name: "ParityDebug",
