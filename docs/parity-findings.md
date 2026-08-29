@@ -220,8 +220,133 @@ Full per-index dumps are reproducible from `0x3FA3` with the record format above
 **entire game's wave content is statically extractable** — the remaining gap for Asteroid/Nebula
 is anchoring each wave-index to a scroll position and mapping the type bytes to species.
 
+> **Done (2026-08-29) — see §4d.** Both remaining gaps are now closed: all 192 waves decoded and
+> independently verified, scroll-anchor derived (128 frames/idx), and every type byte mapped to a
+> behavior. §4d's distinct-type lists (v1: 0x17/0x1B/0x1D/0x1E/0x21/0x24/0x29; v2:
+> 0x1A/0x1F/0x20/0x23/0x25/0x26/0x2B-2D) **supersede** the partial byte list in this paragraph.
+
 > **hex vs decimal caution:** the probe logs the `+0x00` type in **decimal**. Galaxy's chevron is
 > decimal `24` = **`0x18`**; the *hex* `0x24` (= decimal 36) is a different, variant-1 enemy (Curos).
+
+---
+
+## 4d. Asteroid & Nebula schedules + HP/boss (ROM extraction)
+
+Extracted 2026-08-29 by an 8-agent disassembly+decode pass (z80dis) and independently
+re-verified (192 waves diffed byte-for-byte across all three variants → **0 discrepancies**;
+Galaxy re-matches the §4b oracle exactly). Tags: **ROM-EXACT** (bytes/opcodes read directly),
+**MEASURED** (cycle-sim of ROM routines), **INFERRED** (best-fit onto the sim's coarser model or
+unproven naming). Paste-ready Swift for this is in
+[`asteroid-nebula-integration.md`](asteroid-nebula-integration.md). This section **supersedes**
+the partial variant-1/variant-2 byte list at the end of §4c.
+
+### Table geometry (ROM-EXACT)
+- Root @ `0x3FA3` → three level-2 pointers: variant0 `0x3FA9` = **Galaxy**, variant1 `0x4029` =
+  **Asteroid**, variant2 `0x40A9` = **Nebula**; chosen by `0xC240 mod 3`. Area labels align with
+  boss-system stage counter `0xC25B` (0/1/2) — INFERRED (no ROM name strings; Nebiros/Belzebul
+  are StrategyWiki names).
+- Each variant = **exactly 64** level-2 word-pointers (idx 0..63): v0 `0x3FA9–0x4028`, v1
+  `0x4029–0x40A8`, v2 `0x40A9–0x4128`; level-3 records begin `0x4129`. idx0-4 + idx63 point at the
+  shared empty terminator `0x4129`; content runs idx5..62; idx62 = boss/finale; idx63 = boss-gate.
+- **Banking correction:** the type handlers run in **bank 1 fixed in slot1** — `0xFFFF` is the
+  *slot-2* register (standard Sega mapper), and there are **zero** `0xFFFE` writes ROM-wide, so
+  slot1 is never switched and handler file-offset == CPU address. Dispatch (type→handler, all
+  bank1): 15→4842, 16→48E4, 17→49AC, 18→4A5F, 19→4B7E, 1A→4C64, 1B→4D66, 1D→4DE5, 1E→4EA7,
+  1F→4F41, 20→4FB5, 21→50C3, 23→51EB, 24→5302, 25→5428, 26→54B8, 29→574C, 2B/2C/2D→58B7/59AE/5AD5.
+
+### Record fields (ROM-EXACT, reader @0x3F71–0x3F92)
+The TYPE byte (+0x00) *is* the formation selector (jump table @0x0518). Then:
+- **+0x13** = flight-path-script index for STREAM types (8-entry table @`0x4B6A` → path scripts
+  `0xA0A8`…) / an on-entity countdown for LINE types.
+- **+0x14** = absolute spawn-X (line) / member ordinal 1..N (stream).
+- **+0x15** = per-member time stagger (stream; 8-frame steps) / unused (line).
+
+### Scroll-anchor / timing (MEASURED slope, INFERRED offset)
+`atScroll(idx) = 128*idx - 544` frames (sim `scrollSpeed = 1 tick/frame`).
+- **MEASURED**: slope = **128 frames per wave-index**, exact, from cycle-sim of scroll routine
+  `0x0D44` (accum `0xC214 += 0xFF80`/frame; `0xC211` bumps every 4 column-events = 128 frames =
+  64 visual px/idx).
+- **INFERRED**: the `-544` is a harness measurement-origin offset (matches the existing Galaxy
+  cues); intrinsic is `128*idx` (0xC211 seeds to a checkpoint, not 0). Galaxy idx5 was empirically
+  181 vs the formula's 96 → the FIRST content index may want a per-stage warm-up nudge (open Q).
+
+### Asteroid (variant1) — ROM-EXACT type/count/X, INFERRED formation/name
+| idx | romType | species | count | member X (record) | formation |
+|----|---------|---------|-------|-------------------|-----------|
+| 5-7 | 0x21 | tinker | 8 | 48,64,80,96,128,144,192,208 | dive spread |
+| 8,10 | 0x1D | ashion | 7 | 32..224 @32px | line (exact) |
+| 9,11 | 0x1D | ashion | 6 | 48..208 @32px | line (exact) |
+| 12-15 | 0x24 | ufolick | 1 | edge nearest player | edge sweep |
+| 16-19 | 0x1E | burdle | 4-6 | 80,112,144,176 (16) / scattered (17-19) | line (16 exact) |
+| 20,22,32,34 | 0x17 | shamir | 7 | X=32..224; f14=Y-arch 1,32,48,56,48,32,1 | arc |
+| 24-27,48-51 | 0x1B | aster | 6 | all X=128; f14=sweep dir 6/10 | center sweep |
+| 28-31,52-55 | 0x21 | tinker | 8 | 48..208 | dive spread |
+| 36,38,56,58,60 | 0x1D | ashion | 7 | 32..224 | line |
+| 37,39,57,59 | 0x1D | ashion | 6 | 48..208 | line |
+| 40,42 | 0x1E | burdle | 4 | 80,112,144,176 | line (exact) |
+| 41,43 | 0x1E | burdle | 4 | 64,192,96,160 | line |
+| 44-47 | 0x24 | ufolick | 1 | edge | edge sweep |
+| 62 | 0x29 | **Nebiros boss** | 5 segments (f13=0..4) | — | BossSpec |
+
+Distinct grunts: 0x17, 0x1B, 0x1D, 0x1E, 0x21, 0x24. (0x1C exists in the dispatch table @`0x4DD9`
+but never appears in variant1 content.)
+
+### Nebula (variant2) — ROM-EXACT type/count/X, INFERRED formation/name
+| idx | romType | species | count | member X (record) | formation |
+|----|---------|---------|-------|-------------------|-----------|
+| 5,6 | 0x26 | tricker | 2 | 16,240 — screen EDGES | edge emplacements |
+| 8-11,41,43,56-59 | 0x1A | arbleby | 4 | ~player (homing swoop) | swoop |
+| 12,14 | 0x1F | **caborn (INDESTRUCTIBLE)** | 8 | 16,240,48,208,176,80,112,144 | scattered drift |
+| 13,15 | 0x1F | caborn | 7 | 32,224,64,192,160,96,128 | scattered drift |
+| 16-19,36-39 | 0x20 | dririt (splitter) | 3 | scattered | line (approx) |
+| 20,31 | 0x25 | **triat (8-HP)** | 3 | 128,64,192 | line |
+| 21-23,32-34,49,51,53,55 | 0x25 | triat | 5 | 80,176,32,128,224 | line |
+| 24-27,44-47 | 0x23 | dilon (carrier) | 2 | symmetric pairs | symmetric |
+| 28 | 0x1F | caborn | 6 | 48..208 | drift |
+| 29,40,42,48,50,52,54 | mixed | tricker+caborn/arbleby/triat | — | split into 2 cues each |
+| 62 | 0x2D + 0x2C×4 + 0x2B×4 | **Belzebul boss** | 9 pieces | — | BossSpec |
+
+Distinct grunts: 0x1A, 0x1F, 0x20, 0x23, 0x25, 0x26.
+
+### Species behavior (stats/hitbox ROM-EXACT, NAMES low confidence)
+Reward index (+0x1B) → BCD score table @`0x5C60`: idx1=100, idx2=200, idx3=1000, idx4=5000.
+
+| type | species | zone | HP | pts | fires | movement (handler) | r | name conf |
+|------|---------|------|----|----|-------|--------------------|---|-----------|
+| 0x17 | shamir | Ast | 1 | 200 | no | aimed dive/ram (`0x49AC`) | 8 | LOW |
+| 0x1B | aster | Ast | 1 | 100 | no | center sweep (`0x4D66`) | 8 | LOW |
+| 0x1D | ashion | Ast | ~2 | 100 | yes | descend + shot; survives ≥1 hit (`0x4DE5`) | 7 | LOW |
+| 0x1E | burdle | Ast | 1 | 100 | yes | descend, turn, aimed shot (`0x4EA7`) | 7 | LOW |
+| 0x21 | tinker | Ast | 1 | 100 | no | aimed random-accel dive (`0x50C3`) | 4 | LOW (anchor: smallest) |
+| 0x24 | ufolick | Ast | 1 | 200 | yes | edge sweep + 6-shot burst (`0x5302`) | 8 | LOW |
+| 0x1A | arbleby | Neb | 1 | 200 | yes | swoop-to-player + fire (`0x4C64`) | 10 | LOW (anchor: largest) |
+| 0x1F | caborn | Neb | ∞ | 0 | no | INDESTRUCTIBLE drift (`0x4F41`) | 2 | LOW |
+| 0x20 | dririt | Neb | 1 | 100 | no | self-splits into mirrored pair (`0x4FB5`) | 8 | LOW |
+| 0x23 | dilon | Neb | 1 | 200 | no | carrier: births type-0x18 divers (`0x51EB`) | 6 | LOW |
+| 0x25 | triat | Neb | **8** | 200 | yes | armored sweep + shot; `0xC610` one-shots (`0x5428`) | 6 | LOW |
+| 0x26 | tricker | Neb | 1 | 100 | yes | edge rotating ring-fire (`0x54B8`) | 8 | LOW |
+
+### HP verdicts (ROM-EXACT — closes the "heavy/boss-core HP" gap)
+- **All grunts 1-HP** except `0x1D`/ashion (effective ~2, sprite-morph survive-a-hit, spawn-geometry
+  gated) and `0x25`/triat (genuine **8-HP**: `LD (IX+0x28),8`, `JP z,0x5C1B` at 0; `0xC610`≠0
+  heavy-weapon one-shots it). `0x1F`/caborn is **INDESTRUCTIBLE** (no hit-test/death path → model
+  `indestructible: true`, 0 pts). The +0x1B "hp-looking" field is the reward index, not a hit
+  counter (only one hit-set opcode ROM-wide: `SET 6,(IX+1) @0x1AD5`).
+
+### Boss findings (ROM-EXACT structure, single-Int BossSpec insufficient)
+Two boss systems: (1) **entity-segment finale @ idx62** into the shared `0xCA00` array — Nebiros =
+`0x29 ×5` (`0x574C`), Belzebul = `0x2D` core + `0x2C ×4` + `0x2B ×4` (`0x5AD5`/`59AE`/`58B7`); each
+segment is boss-scripted, not a 1-hit grunt. (2) **Scripted end-boss** — driver @`0x3B94`, anchor
+type `0x2A` @slot `0xC9C0`, gated by `0xC24E` when `0xC211` reaches `0x41` (idx 65); its core (type
+`0x27 @0x5577`) has a real 8-hit counter (`INC (IX+0x28)` → death @8, `0x56E8`), defeat flag
+`0xC2C1`, reward idx4 (5000). Per-phase attack scripts behind `0xA858` (Ast) / `0xD030` (Neb) —
+**not yet decoded**. `BossSpec.hp` (single Int) can't model this → boss-model TODO.
+
+### scrollLength (derived) — replace the placeholder `2000`
+Boss-spawn frame = `atScroll(idx62) = 128*62 - 544 = 7392` for both stages (last grunt idx60 @7136
+Ast / idx59 @7008 Neb, so the boss fires after all grunts). Alternatives: intrinsic-from-zero
+`7936`; idx63 gate `7520`; scripted-boss idx65 `7776`. Galaxy's own `907` should likewise extend to
+its full idx5..62 schedule (~7392) for consistency (out of scope for the Asteroid/Nebula pass).
 
 ---
 
