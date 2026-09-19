@@ -33,10 +33,19 @@ let argv = CommandLine.arguments
 let outRoot = argv.count > 1 ? argv[1] : "/tmp/astro-refrips"
 let zoneArg = argv.count > 2 ? argv[2].lowercased() : "all"
 
-// The ROM is gitignored/absent from the tree; ParityProbe reads it from this local path too.
-let romPath = "/Users/ptysell/Code/astro-warrior/docs/AstroWarrior.sms"
-guard let romData = try? Data(contentsOf: URL(fileURLWithPath: romPath)) else {
-    fputs("AssetRip: cannot read ROM at \(romPath)\n", stderr); exit(1)
+// The ROM is gitignored/absent from the tree. Locate it via $ASTRO_ROM, then the usual local
+// paths (ParityDebug resources / the docs copy in the main checkout or a worktree), like the
+// other harness tools — so this isn't pinned to one machine's absolute path.
+let romCandidates = [
+    ProcessInfo.processInfo.environment["ASTRO_ROM"],
+    "AstroWarriorKit/Sources/ParityDebug/Resources/AstroWarrior.sms",
+    "Sources/ParityDebug/Resources/AstroWarrior.sms",
+    "docs/AstroWarrior.sms",
+    "/Users/ptysell/Code/astro-warrior/docs/AstroWarrior.sms",
+].compactMap { $0 }
+guard let romPath = romCandidates.first(where: { FileManager.default.fileExists(atPath: $0) }),
+      let romData = try? Data(contentsOf: URL(fileURLWithPath: romPath)) else {
+    fputs("AssetRip: ROM not found. Set $ASTRO_ROM or place it at one of: \(romCandidates.joined(separator: ", "))\n", stderr); exit(1)
 }
 let rom = [UInt8](romData)   // flat, headerless — ROM addr 0x0000–0x3FFF maps 1:1 to file offset
 
