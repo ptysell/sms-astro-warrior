@@ -33,10 +33,24 @@ final class WaveSpawner {
     func update(_ world: World, _ ctx: SimContext) {
         for i in pending.indices {
             if pending[i].timer > 0 { pending[i].timer -= 1 }
-            // Flight-script stream members all spawn on the same frame (stacked); everything else
-            // keeps the emission stagger (interval 0 = all at once).
-            let emitInterval = isFlightStream(pending[i].wave) ? 0.0 : pending[i].wave.interval
+            // ROM shared 12-slot wave pool (@0xCA00): a NEW wave only BEGINS emitting when ≥6 slots are
+            // free (0x3F40 BC=0x0C06 → C=6), and any member that finds no free slot is SILENTLY DROPPED
+            // (total ≤ 12). This throttle spreads a dense schedule over time (raising the sustained count
+            // and capping the peak) instead of dumping a whole wave at once. See docs/rom-decode-systems.md.
+            let started = pending[i].index > 0
+            if !started, Tuning.enemyPoolSlots - world.poolEnemyCount() < Tuning.waveStartFreeSlots {
+                continue                              // not enough free slots yet — delay this wave
+            }
+            // Flight-script stream members all spawn on the same frame (stacked); Ast/Neb line/arc waves
+            // with an entryStagger ALSO spawn all-at-once (then hold each member's motion, see emit);
+            // everything else keeps the legacy emission stagger (interval 0 = all at once).
+            let staggeredEntry = pending[i].wave.entryStagger > 0
+            let emitInterval = (isFlightStream(pending[i].wave) || staggeredEntry)
+                ? 0.0 : pending[i].wave.interval
             while pending[i].index < pending[i].wave.count, pending[i].timer <= 0 {
+                if world.poolEnemyCount() >= Tuning.enemyPoolSlots {
+                    pending[i].index += 1; continue   // pool full → drop this member (still consume it)
+                }
                 emit(pending[i], into: world)
                 pending[i].index += 1
                 pending[i].timer += emitInterval
@@ -47,12 +61,20 @@ final class WaveSpawner {
 
     private func emit(_ p: Pending, into world: World) {
         let e = p.wave.make()
-        let pos = Self.position(p.wave.formation, i: p.index, count: p.wave.count, baseX: p.baseX)
+        var pos = Self.position(p.wave.formation, i: p.index, count: p.wave.count, baseX: p.baseX)
+        if let xs = p.wave.memberX, !xs.isEmpty {        // ROM scripted per-member X overrides the layout
+            pos.x = min(max(xs[p.index % xs.count], 16), LOGICAL_WIDTH - 16)
+        }
         e.position = pos
         e.anchorX = pos.x
+        e.memberIndex = p.index          // ROM record ordinal → per-member mover params (e.g. aster dir/decel)
         if isFlightStream(p.wave) {
             // ROM +0x15: member ordinal (i, 0-based) → movement-release stagger (i+1)·interval frames.
             e.releaseDelay = Int((Double(p.index) + 1) * p.wave.interval)
+        } else if p.wave.entryStagger > 0 {
+            // ROM +0x14/+0x13 entry stagger (Ast/Neb line/arc): all members are counted from the spawn
+            // frame but member i holds its motion i·entryStagger frames — staggered descent sustains count.
+            e.releaseDelay = Int(Double(p.index) * p.wave.entryStagger)
         }
         // ROM +0x13: stamp the wave's decoded flight-script index onto every member (sharlin).
         if let path = p.wave.pathIndex { e.flightPathIndex = path }

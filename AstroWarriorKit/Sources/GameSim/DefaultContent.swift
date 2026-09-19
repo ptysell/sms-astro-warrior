@@ -96,73 +96,84 @@ public enum DefaultContent {
 
     private static func cue(_ at: Double, _ make: @escaping () -> Enemy,
                             _ formation: Formation, _ count: Int, _ interval: Double,
-                            _ baseX: Double? = nil, path: Int? = nil) -> WaveCue {
+                            _ baseX: Double? = nil, path: Int? = nil, xs: [Double]? = nil) -> WaveCue {
         WaveCue(atScroll: at,
                 wave: Wave(make: make, formation: formation, count: count,
-                           interval: interval, baseX: baseX, pathIndex: path))
+                           interval: interval, baseX: baseX, pathIndex: path, memberX: xs))
     }
 
     static func asteroid() -> Level {
         // Asteroid — variant1 wave table (root 0x4029), decoded 2026-08 and re-verified against the ROM
         // (zero discrepancies). romType/count/member-X ROM-EXACT; formation/baseX best-fit; names provisional.
-        // atScroll = 128*idx − 544. Boss Nebiros (0x29 ×5) fires at scrollLength (idx62). NOT yet
-        // parity-measured — reaching this stage in lockstep needs a warp harness (a follow-up).
+        // atScroll = idx5→179 (warm-up), else 128*idx − 546  ── matches Galaxy; corrected 2026-09 (Wave 3b
+        // onset-schedule). ROM basis: wave-index 0xC211 increments every 128 scroll ticks (scroll routine
+        // 0x0D44, once per 4 block-rows via c213); the spawner @0x3F2B is gated by spawn-flag 0xC241 which
+        // the intro "get-ready" entity holds until its +0x10 countdown (init 0xB4=180f @0x1009) expires —
+        // so the FIRST wave (idx5) is delayed to ~f179 regardless of variant (census: Ast/Neb idx5 first-
+        // spawn=179, idx7=350=128·7−546, idx8=478). Was 128·idx−544 with idx5=96 (~84f early). Boss Nebiros
+        // (0x29 ×5) fires at scrollLength (idx62). Residual: idx6 ROM spawn is pool-delayed (241 vs onset
+        // 222) and drops to 5 members when idx5's 8 tinkers occupy the 12-slot pool (0xCA00) — the coarse
+        // sim spawns the whole record and cannot model the pool cap; that is a separate (population) gap.
         let waves: [WaveCue] = [
-            cue(96,   Bestiary.tinker,  .line,   8, 0, 120),  // idx5  0x21 dive  X=48,64,80,96,128,144,192,208
-            cue(224,  Bestiary.tinker,  .line,   8, 0, 120),  // idx6  0x21 dive  X=48..208
-            cue(352,  Bestiary.tinker,  .line,   8, 0, 120),  // idx7  0x21 dive  X=48..208
-            cue(480,  Bestiary.ashion,  .line,   7, 0, 128),  // idx8  0x1D line  X=32,64,96,128,160,192,224 (exact)
-            cue(608,  Bestiary.ashion,  .line,   6, 0, 128),  // idx9  0x1D line  X=48,80,112,144,176,208 (exact)
-            cue(736,  Bestiary.ashion,  .line,   7, 0, 128),  // idx10 0x1D line  X=32..224 (exact)
-            cue(864,  Bestiary.ashion,  .line,   6, 0, 128),  // idx11 0x1D line  X=48..208 (exact)
-            cue(992,  Bestiary.ufolick, .stream, 1, 0, 128),  // idx12 0x24 edge-sweep (enters side nearest player)
-            cue(1120, Bestiary.ufolick, .stream, 1, 0, 128),  // idx13 0x24 edge-sweep
-            cue(1248, Bestiary.ufolick, .stream, 1, 0, 128),  // idx14 0x24 edge-sweep
-            cue(1376, Bestiary.ufolick, .stream, 1, 0, 128),  // idx15 0x24 edge-sweep
-            cue(1504, Bestiary.burdle,  .line,   4, 0, 128),  // idx16 0x1E line  X=80,112,144,176 (exact)
-            cue(1632, Bestiary.burdle,  .line,   6, 0, 128),  // idx17 0x1E line  X=112,144,32,64,192,224 (approx)
-            cue(1760, Bestiary.burdle,  .line,   4, 0, 128),  // idx18 0x1E line  X=32,224,176,80 (approx)
-            cue(1888, Bestiary.burdle,  .line,   4, 0, 128),  // idx19 0x1E line  X=64,192,64,192 (approx)
-            cue(2016, Bestiary.shamir,  .arc,    7, 0, 128),  // idx20 0x17 arc   X=32..224@32px, f14 Y-arch
-            cue(2272, Bestiary.shamir,  .arc,    7, 0, 128),  // idx22 0x17 arc   X=32..224 (idx21 empty rest)
-            cue(2528, Bestiary.aster,   .stream, 6, 0, 128),  // idx24 0x1B sweep all spawn X=128, f14=dir 6/10
-            cue(2656, Bestiary.aster,   .stream, 6, 0, 128),  // idx25 0x1B sweep (idx23 empty rest)
-            cue(2784, Bestiary.aster,   .stream, 6, 0, 128),  // idx26 0x1B sweep
-            cue(2912, Bestiary.aster,   .stream, 6, 0, 128),  // idx27 0x1B sweep
-            cue(3040, Bestiary.tinker,  .line,   8, 0, 120),  // idx28 0x21 dive  X=48..208
-            cue(3168, Bestiary.tinker,  .line,   8, 0, 120),  // idx29 0x21 dive  X=48..208
-            cue(3296, Bestiary.tinker,  .line,   8, 0, 120),  // idx30 0x21 dive  X=48..208
-            cue(3424, Bestiary.tinker,  .line,   8, 0, 120),  // idx31 0x21 dive  X=48..208
-            cue(3552, Bestiary.shamir,  .arc,    7, 0, 128),  // idx32 0x17 arc   X=32..224
-            cue(3808, Bestiary.shamir,  .arc,    7, 0, 128),  // idx34 0x17 arc   X=32..224 (idx33,35 empty rest)
-            cue(4064, Bestiary.ashion,  .line,   7, 0, 128),  // idx36 0x1D line  X=32..224 (exact)
-            cue(4192, Bestiary.ashion,  .line,   6, 0, 128),  // idx37 0x1D line  X=48..208 (exact)
-            cue(4320, Bestiary.ashion,  .line,   7, 0, 128),  // idx38 0x1D line  X=32..224 (exact)
-            cue(4448, Bestiary.ashion,  .line,   6, 0, 128),  // idx39 0x1D line  X=48..208 (exact)
-            cue(4576, Bestiary.burdle,  .line,   4, 0, 128),  // idx40 0x1E line  X=80,112,144,176 (exact)
-            cue(4704, Bestiary.burdle,  .line,   4, 0, 128),  // idx41 0x1E line  X=64,192,96,160 (approx)
-            cue(4832, Bestiary.burdle,  .line,   4, 0, 128),  // idx42 0x1E line  X=80,112,144,176 (exact)
-            cue(4960, Bestiary.burdle,  .line,   4, 0, 128),  // idx43 0x1E line  X=64,192,96,160 (approx)
-            cue(5088, Bestiary.ufolick, .stream, 1, 0, 128),  // idx44 0x24 edge-sweep
-            cue(5216, Bestiary.ufolick, .stream, 1, 0, 128),  // idx45 0x24 edge-sweep
-            cue(5344, Bestiary.ufolick, .stream, 1, 0, 128),  // idx46 0x24 edge-sweep
-            cue(5472, Bestiary.ufolick, .stream, 1, 0, 128),  // idx47 0x24 edge-sweep
-            cue(5600, Bestiary.aster,   .stream, 6, 0, 128),  // idx48 0x1B sweep X=128
-            cue(5728, Bestiary.aster,   .stream, 6, 0, 128),  // idx49 0x1B sweep
-            cue(5856, Bestiary.aster,   .stream, 6, 0, 128),  // idx50 0x1B sweep
-            cue(5984, Bestiary.aster,   .stream, 6, 0, 128),  // idx51 0x1B sweep
-            cue(6112, Bestiary.tinker,  .line,   8, 0, 120),  // idx52 0x21 dive  X=48..208
-            cue(6240, Bestiary.tinker,  .line,   8, 0, 120),  // idx53 0x21 dive  X=48..208
-            cue(6368, Bestiary.tinker,  .line,   8, 0, 120),  // idx54 0x21 dive  X=48..208
-            cue(6496, Bestiary.tinker,  .line,   8, 0, 120),  // idx55 0x21 dive  X=48..208
-            cue(6624, Bestiary.ashion,  .line,   7, 0, 128),  // idx56 0x1D line  X=32..224 (exact)
-            cue(6752, Bestiary.ashion,  .line,   6, 0, 128),  // idx57 0x1D line  X=48..208 (exact)
-            cue(6880, Bestiary.ashion,  .line,   7, 0, 128),  // idx58 0x1D line  X=32..224 (exact)
-            cue(7008, Bestiary.ashion,  .line,   6, 0, 128),  // idx59 0x1D line  X=48..208 (exact)
-            cue(7136, Bestiary.ashion,  .line,   7, 0, 128),  // idx60 0x1D line  X=32..224 (exact)
+            cue(179,   Bestiary.tinker,  .line,   8, 0, 120, xs: [48,64,80,96,128,144,192,208]),  // idx5 0x21
+            cue(222,  Bestiary.tinker,  .line,   8, 0, 120, xs: [48,64,80,96,128,144,192,208]),  // idx6 0x21
+            cue(350,  Bestiary.tinker,  .line,   8, 0, 120, xs: [48,64,80,96,128,144,192,208]),  // idx7 0x21
+            cue(478,  Bestiary.ashion,  .line,   7, 0, 128, xs: [32,64,96,128,160,192,224]),  // idx8 0x1D (exact)
+            cue(606,  Bestiary.ashion,  .line,   6, 0, 128),  // idx9  0x1D line  X=48,80,112,144,176,208 (exact)
+            cue(734,  Bestiary.ashion,  .line,   7, 0, 128),  // idx10 0x1D line  X=32..224 (exact)
+            cue(862,  Bestiary.ashion,  .line,   6, 0, 128),  // idx11 0x1D line  X=48..208 (exact)
+            cue(990,  Bestiary.ufolick, .stream, 1, 0, 128),  // idx12 0x24 edge-sweep (enters side nearest player)
+            cue(1118, Bestiary.ufolick, .stream, 1, 0, 128),  // idx13 0x24 edge-sweep
+            cue(1246, Bestiary.ufolick, .stream, 1, 0, 128),  // idx14 0x24 edge-sweep
+            cue(1374, Bestiary.ufolick, .stream, 1, 0, 128),  // idx15 0x24 edge-sweep
+            cue(1502, Bestiary.burdle,  .line,   4, 0, 128),  // idx16 0x1E line  X=80,112,144,176 (exact)
+            cue(1630, Bestiary.burdle,  .line,   6, 0, 128),  // idx17 0x1E line  X=112,144,32,64,192,224 (approx)
+            cue(1758, Bestiary.burdle,  .line,   4, 0, 128),  // idx18 0x1E line  X=32,224,176,80 (approx)
+            cue(1886, Bestiary.burdle,  .line,   4, 0, 128),  // idx19 0x1E line  X=64,192,64,192 (approx)
+            cue(2014, Bestiary.shamir,  .arc,    7, 0, 128),  // idx20 0x17 arc   X=32..224@32px, f14 Y-arch
+            cue(2270, Bestiary.shamir,  .arc,    7, 0, 128),  // idx22 0x17 arc   X=32..224 (idx21 empty rest)
+            cue(2526, Bestiary.aster,   .stream, 6, 0, 128),  // idx24 0x1B sweep all spawn X=128, f14=dir 6/10
+            cue(2654, Bestiary.aster,   .stream, 6, 0, 128),  // idx25 0x1B sweep (idx23 empty rest)
+            cue(2782, Bestiary.aster,   .stream, 6, 0, 128),  // idx26 0x1B sweep
+            cue(2910, Bestiary.aster,   .stream, 6, 0, 128),  // idx27 0x1B sweep
+            cue(3038, Bestiary.tinker,  .line,   8, 0, 120),  // idx28 0x21 dive  X=48..208
+            cue(3166, Bestiary.tinker,  .line,   8, 0, 120),  // idx29 0x21 dive  X=48..208
+            cue(3294, Bestiary.tinker,  .line,   8, 0, 120),  // idx30 0x21 dive  X=48..208
+            cue(3422, Bestiary.tinker,  .line,   8, 0, 120),  // idx31 0x21 dive  X=48..208
+            cue(3550, Bestiary.shamir,  .arc,    7, 0, 128),  // idx32 0x17 arc   X=32..224
+            cue(3806, Bestiary.shamir,  .arc,    7, 0, 128),  // idx34 0x17 arc   X=32..224 (idx33,35 empty rest)
+            cue(4062, Bestiary.ashion,  .line,   7, 0, 128),  // idx36 0x1D line  X=32..224 (exact)
+            cue(4190, Bestiary.ashion,  .line,   6, 0, 128),  // idx37 0x1D line  X=48..208 (exact)
+            cue(4318, Bestiary.ashion,  .line,   7, 0, 128),  // idx38 0x1D line  X=32..224 (exact)
+            cue(4446, Bestiary.ashion,  .line,   6, 0, 128),  // idx39 0x1D line  X=48..208 (exact)
+            cue(4574, Bestiary.burdle,  .line,   4, 0, 128),  // idx40 0x1E line  X=80,112,144,176 (exact)
+            cue(4702, Bestiary.burdle,  .line,   4, 0, 128),  // idx41 0x1E line  X=64,192,96,160 (approx)
+            cue(4830, Bestiary.burdle,  .line,   4, 0, 128),  // idx42 0x1E line  X=80,112,144,176 (exact)
+            cue(4958, Bestiary.burdle,  .line,   4, 0, 128),  // idx43 0x1E line  X=64,192,96,160 (approx)
+            cue(5086, Bestiary.ufolick, .stream, 1, 0, 128),  // idx44 0x24 edge-sweep
+            cue(5214, Bestiary.ufolick, .stream, 1, 0, 128),  // idx45 0x24 edge-sweep
+            cue(5342, Bestiary.ufolick, .stream, 1, 0, 128),  // idx46 0x24 edge-sweep
+            cue(5470, Bestiary.ufolick, .stream, 1, 0, 128),  // idx47 0x24 edge-sweep
+            cue(5598, Bestiary.aster,   .stream, 6, 0, 128),  // idx48 0x1B sweep X=128
+            cue(5726, Bestiary.aster,   .stream, 6, 0, 128),  // idx49 0x1B sweep
+            cue(5854, Bestiary.aster,   .stream, 6, 0, 128),  // idx50 0x1B sweep
+            cue(5982, Bestiary.aster,   .stream, 6, 0, 128),  // idx51 0x1B sweep
+            cue(6110, Bestiary.tinker,  .line,   8, 0, 120),  // idx52 0x21 dive  X=48..208
+            cue(6238, Bestiary.tinker,  .line,   8, 0, 120),  // idx53 0x21 dive  X=48..208
+            cue(6366, Bestiary.tinker,  .line,   8, 0, 120),  // idx54 0x21 dive  X=48..208
+            cue(6494, Bestiary.tinker,  .line,   8, 0, 120),  // idx55 0x21 dive  X=48..208
+            cue(6622, Bestiary.ashion,  .line,   7, 0, 128),  // idx56 0x1D line  X=32..224 (exact)
+            cue(6750, Bestiary.ashion,  .line,   6, 0, 128),  // idx57 0x1D line  X=48..208 (exact)
+            cue(6878, Bestiary.ashion,  .line,   7, 0, 128),  // idx58 0x1D line  X=32..224 (exact)
+            cue(7006, Bestiary.ashion,  .line,   6, 0, 128),  // idx59 0x1D line  X=48..208 (exact)
+            cue(7134, Bestiary.ashion,  .line,   7, 0, 128),  // idx60 0x1D line  X=32..224 (exact)
         ]
+        // Wave-3b: line/arc waves get the ROM per-member entry stagger (sustains the on-field count as
+        // members descend at the ROM's faster true speeds). Streams keep their own release model.
+        let staggered = waves.map { $0.wave.formation == .line || $0.wave.formation == .arc
+            ? $0.withEntryStagger(Tuning.astNebEntryStagger) : $0 }
         return Level(id: .asteroid, scrollSpeed: Tuning.scrollSpeed, scrollLength: 7392,
-                     waves: waves, boss: BossSpec(id: "nebiros", hp: 70),
+                     waves: staggered, boss: BossSpec(id: "nebiros", hp: 70),
                      background: BackgroundRef("asteroid"), music: "asteroid")
     }
 
@@ -170,70 +181,77 @@ public enum DefaultContent {
         // Nebula — variant2 wave table (root 0x40A9), decoded 2026-08 and re-verified (zero discrepancies).
         // romType/count/member-X ROM-EXACT; formation/baseX best-fit; names provisional. caborn (0x1F) is
         // INDESTRUCTIBLE (a hazard, not a kill). MIXED indices carry two romTypes → two cues at one atScroll.
-        // atScroll = 128*idx − 544. Boss Belzebul (0x2D + 0x2C ×4 + 0x2B ×4) at scrollLength. NOT yet measured.
+        // atScroll = idx5→179 (warm-up), else 128*idx − 546  ── matches Galaxy; corrected 2026-09 (Wave 3b
+        // onset-schedule). Same ROM basis as asteroid() above (wave-index 0xC211 @0x0D44; spawn-gate 0xC241
+        // held ~180f by the intro entity). Census: Neb idx5 first-spawn=179 (0x26×2), idx6=222 (0x26×2),
+        // idx8=478 (0x1A×4). Was 128·idx−544/idx5=96 (~84f early). MIXED cues share one atScroll (both edits
+        // applied). Boss Belzebul (0x2D + 0x2C ×4 + 0x2B ×4) at scrollLength.
         let waves: [WaveCue] = [
-            cue(96,   Bestiary.tricker, .line,   2, 0, 128),  // idx5  0x26 ring-fire  X=16,240 (EDGES — approx)
-            cue(224,  Bestiary.tricker, .line,   2, 0, 128),  // idx6  0x26 ring-fire  X=16,240 (idx7 empty rest)
-            cue(480,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx8  0x1A swoop-to-player; f13=1,16,32,48 stagger
-            cue(608,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx9  0x1A swoop
-            cue(736,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx10 0x1A swoop
-            cue(864,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx11 0x1A swoop
-            cue(992,  Bestiary.caborn,  .line,   8, 0, 128),  // idx12 0x1F INDESTRUCTIBLE X=16,240,48,208,176,80,112,144
-            cue(1120, Bestiary.caborn,  .line,   7, 0, 128),  // idx13 0x1F INDESTRUCTIBLE X=32,224,64,192,160,96,128
-            cue(1248, Bestiary.caborn,  .line,   8, 0, 128),  // idx14 0x1F INDESTRUCTIBLE X=16,240,48,208,176,80,112,144
-            cue(1376, Bestiary.caborn,  .line,   7, 0, 128),  // idx15 0x1F INDESTRUCTIBLE X=32,224,64,192,160,96,128
-            cue(1504, Bestiary.dririt,  .line,   3, 0, 117),  // idx16 0x20 splitter X=176,112,64
-            cue(1632, Bestiary.dririt,  .line,   3, 0, 128),  // idx17 0x20 splitter X=160,80,144
-            cue(1760, Bestiary.dririt,  .line,   3, 0, 139),  // idx18 0x20 splitter X=192,128,96
-            cue(1888, Bestiary.dririt,  .line,   3, 0, 128),  // idx19 0x20 splitter X=96,128,160
-            cue(2016, Bestiary.triat,   .line,   3, 0, 128),  // idx20 0x25 ARMORED-8HP X=128,64,192
-            cue(2144, Bestiary.triat,   .line,   5, 0, 128),  // idx21 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(2272, Bestiary.triat,   .line,   5, 0, 128),  // idx22 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(2400, Bestiary.triat,   .line,   5, 0, 128),  // idx23 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(2528, Bestiary.dilon,   .line,   2, 0, 128),  // idx24 0x23 carrier X=64,192
-            cue(2656, Bestiary.dilon,   .line,   2, 0, 128),  // idx25 0x23 carrier X=48,208
-            cue(2784, Bestiary.dilon,   .line,   2, 0, 128),  // idx26 0x23 carrier X=64,192
-            cue(2912, Bestiary.dilon,   .line,   2, 0, 128),  // idx27 0x23 carrier X=104,152
-            cue(3040, Bestiary.caborn,  .line,   6, 0, 128),  // idx28 0x1F INDESTRUCTIBLE X=48,80,112,144,176,208
-            cue(3168, Bestiary.tricker, .line,   2, 0, 128),  // idx29 MIXED 0x26 x2 X=16,240
-            cue(3168, Bestiary.caborn,  .line,   5, 0, 128),  // idx29 MIXED 0x1F x5 X=64,96,128,160,192 (INDESTRUCTIBLE)
-            cue(3424, Bestiary.triat,   .line,   3, 0, 128),  // idx31 0x25 ARMORED-8HP X=128,64,192
-            cue(3552, Bestiary.triat,   .line,   5, 0, 128),  // idx32 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(3680, Bestiary.triat,   .line,   5, 0, 128),  // idx33 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(3808, Bestiary.triat,   .line,   5, 0, 128),  // idx34 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(4064, Bestiary.dririt,  .line,   3, 0, 117),  // idx36 0x20 splitter X=176,112,64
-            cue(4192, Bestiary.dririt,  .line,   3, 0, 128),  // idx37 0x20 splitter X=160,80,144
-            cue(4320, Bestiary.dririt,  .line,   3, 0, 139),  // idx38 0x20 splitter X=192,128,96
-            cue(4448, Bestiary.dririt,  .line,   3, 0, 128),  // idx39 0x20 splitter X=96,128,160
-            cue(4576, Bestiary.tricker, .line,   2, 0, 128),  // idx40 MIXED 0x26 x2 X=16,240
-            cue(4576, Bestiary.arbleby, .stream, 4, 0, 128),  // idx40 MIXED 0x1A x4 swoop
-            cue(4704, Bestiary.arbleby, .stream, 4, 0, 128),  // idx41 0x1A swoop  f13=1,24,48,72
-            cue(4832, Bestiary.tricker, .line,   2, 0, 128),  // idx42 MIXED 0x26 x2 X=16,240
-            cue(4832, Bestiary.arbleby, .stream, 4, 0, 128),  // idx42 MIXED 0x1A x4 swoop
-            cue(4960, Bestiary.arbleby, .stream, 4, 0, 128),  // idx43 0x1A swoop  f13=1,16,48,64
-            cue(5088, Bestiary.dilon,   .line,   2, 0, 128),  // idx44 0x23 carrier X=64,192
-            cue(5216, Bestiary.dilon,   .line,   2, 0, 128),  // idx45 0x23 carrier X=48,208
-            cue(5344, Bestiary.dilon,   .line,   2, 0, 128),  // idx46 0x23 carrier X=64,192
-            cue(5472, Bestiary.dilon,   .line,   2, 0, 128),  // idx47 0x23 carrier X=104,152
-            cue(5600, Bestiary.tricker, .line,   2, 0, 128),  // idx48 MIXED 0x26 x2 X=16,240
-            cue(5600, Bestiary.triat,   .line,   3, 0, 128),  // idx48 MIXED 0x25 x3 ARMORED-8HP X=128,64,192
-            cue(5728, Bestiary.triat,   .line,   5, 0, 128),  // idx49 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(5856, Bestiary.tricker, .line,   4, 0, 128),  // idx50 MIXED 0x26 x4 X=240,240,16,16 (EDGES — approx)
-            cue(5856, Bestiary.triat,   .line,   5, 0, 128),  // idx50 MIXED 0x25 x5 ARMORED-8HP X=80,176,32,128,224
-            cue(5984, Bestiary.triat,   .line,   5, 0, 128),  // idx51 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(6112, Bestiary.tricker, .line,   2, 0, 128),  // idx52 MIXED 0x26 x2 X=16,240
-            cue(6112, Bestiary.triat,   .line,   3, 0, 128),  // idx52 MIXED 0x25 x3 ARMORED-8HP X=128,64,192
-            cue(6240, Bestiary.triat,   .line,   5, 0, 128),  // idx53 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(6368, Bestiary.tricker, .line,   4, 0, 128),  // idx54 MIXED 0x26 x4 X=240,240,16,16
-            cue(6368, Bestiary.triat,   .line,   5, 0, 128),  // idx54 MIXED 0x25 x5 ARMORED-8HP X=80,176,32,128,224
-            cue(6496, Bestiary.triat,   .line,   5, 0, 128),  // idx55 0x25 ARMORED-8HP X=80,176,32,128,224
-            cue(6624, Bestiary.arbleby, .stream, 4, 0, 128),  // idx56 0x1A swoop
-            cue(6752, Bestiary.arbleby, .stream, 4, 0, 128),  // idx57 0x1A swoop
-            cue(6880, Bestiary.arbleby, .stream, 4, 0, 128),  // idx58 0x1A swoop
-            cue(7008, Bestiary.arbleby, .stream, 4, 0, 128),  // idx59 0x1A swoop
+            cue(179,   Bestiary.tricker, .line,   2, 0, 128, xs: [16, 240]),  // idx5  0x26 EDGES (survive player fire)
+            cue(222,  Bestiary.tricker, .line,   2, 0, 128, xs: [16, 240]),  // idx6  0x26 EDGES (idx7 empty rest)
+            cue(478,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx8  0x1A swoop-to-player; f13=1,16,32,48 stagger
+            cue(606,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx9  0x1A swoop
+            cue(734,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx10 0x1A swoop
+            cue(862,  Bestiary.arbleby, .stream, 4, 0, 128),  // idx11 0x1A swoop
+            cue(990,  Bestiary.caborn,  .line,   8, 0, 128),  // idx12 0x1F INDESTRUCTIBLE X=16,240,48,208,176,80,112,144
+            cue(1118, Bestiary.caborn,  .line,   7, 0, 128),  // idx13 0x1F INDESTRUCTIBLE X=32,224,64,192,160,96,128
+            cue(1246, Bestiary.caborn,  .line,   8, 0, 128),  // idx14 0x1F INDESTRUCTIBLE X=16,240,48,208,176,80,112,144
+            cue(1374, Bestiary.caborn,  .line,   7, 0, 128),  // idx15 0x1F INDESTRUCTIBLE X=32,224,64,192,160,96,128
+            cue(1502, Bestiary.dririt,  .line,   3, 0, 117),  // idx16 0x20 splitter X=176,112,64
+            cue(1630, Bestiary.dririt,  .line,   3, 0, 128),  // idx17 0x20 splitter X=160,80,144
+            cue(1758, Bestiary.dririt,  .line,   3, 0, 139),  // idx18 0x20 splitter X=192,128,96
+            cue(1886, Bestiary.dririt,  .line,   3, 0, 128),  // idx19 0x20 splitter X=96,128,160
+            cue(2014, Bestiary.triat,   .line,   3, 0, 128),  // idx20 0x25 ARMORED-8HP X=128,64,192
+            cue(2142, Bestiary.triat,   .line,   5, 0, 128),  // idx21 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(2270, Bestiary.triat,   .line,   5, 0, 128),  // idx22 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(2398, Bestiary.triat,   .line,   5, 0, 128),  // idx23 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(2526, Bestiary.dilon,   .line,   2, 0, 128),  // idx24 0x23 carrier X=64,192
+            cue(2654, Bestiary.dilon,   .line,   2, 0, 128),  // idx25 0x23 carrier X=48,208
+            cue(2782, Bestiary.dilon,   .line,   2, 0, 128),  // idx26 0x23 carrier X=64,192
+            cue(2910, Bestiary.dilon,   .line,   2, 0, 128),  // idx27 0x23 carrier X=104,152
+            cue(3038, Bestiary.caborn,  .line,   6, 0, 128),  // idx28 0x1F INDESTRUCTIBLE X=48,80,112,144,176,208
+            cue(3166, Bestiary.tricker, .line,   2, 0, 128),  // idx29 MIXED 0x26 x2 X=16,240
+            cue(3166, Bestiary.caborn,  .line,   5, 0, 128),  // idx29 MIXED 0x1F x5 X=64,96,128,160,192 (INDESTRUCTIBLE)
+            cue(3422, Bestiary.triat,   .line,   3, 0, 128),  // idx31 0x25 ARMORED-8HP X=128,64,192
+            cue(3550, Bestiary.triat,   .line,   5, 0, 128),  // idx32 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(3678, Bestiary.triat,   .line,   5, 0, 128),  // idx33 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(3806, Bestiary.triat,   .line,   5, 0, 128),  // idx34 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(4062, Bestiary.dririt,  .line,   3, 0, 117),  // idx36 0x20 splitter X=176,112,64
+            cue(4190, Bestiary.dririt,  .line,   3, 0, 128),  // idx37 0x20 splitter X=160,80,144
+            cue(4318, Bestiary.dririt,  .line,   3, 0, 139),  // idx38 0x20 splitter X=192,128,96
+            cue(4446, Bestiary.dririt,  .line,   3, 0, 128),  // idx39 0x20 splitter X=96,128,160
+            cue(4574, Bestiary.tricker, .line,   2, 0, 128),  // idx40 MIXED 0x26 x2 X=16,240
+            cue(4574, Bestiary.arbleby, .stream, 4, 0, 128),  // idx40 MIXED 0x1A x4 swoop
+            cue(4702, Bestiary.arbleby, .stream, 4, 0, 128),  // idx41 0x1A swoop  f13=1,24,48,72
+            cue(4830, Bestiary.tricker, .line,   2, 0, 128),  // idx42 MIXED 0x26 x2 X=16,240
+            cue(4830, Bestiary.arbleby, .stream, 4, 0, 128),  // idx42 MIXED 0x1A x4 swoop
+            cue(4958, Bestiary.arbleby, .stream, 4, 0, 128),  // idx43 0x1A swoop  f13=1,16,48,64
+            cue(5086, Bestiary.dilon,   .line,   2, 0, 128),  // idx44 0x23 carrier X=64,192
+            cue(5214, Bestiary.dilon,   .line,   2, 0, 128),  // idx45 0x23 carrier X=48,208
+            cue(5342, Bestiary.dilon,   .line,   2, 0, 128),  // idx46 0x23 carrier X=64,192
+            cue(5470, Bestiary.dilon,   .line,   2, 0, 128),  // idx47 0x23 carrier X=104,152
+            cue(5598, Bestiary.tricker, .line,   2, 0, 128),  // idx48 MIXED 0x26 x2 X=16,240
+            cue(5598, Bestiary.triat,   .line,   3, 0, 128),  // idx48 MIXED 0x25 x3 ARMORED-8HP X=128,64,192
+            cue(5726, Bestiary.triat,   .line,   5, 0, 128),  // idx49 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(5854, Bestiary.tricker, .line,   4, 0, 128),  // idx50 MIXED 0x26 x4 X=240,240,16,16 (EDGES — approx)
+            cue(5854, Bestiary.triat,   .line,   5, 0, 128),  // idx50 MIXED 0x25 x5 ARMORED-8HP X=80,176,32,128,224
+            cue(5982, Bestiary.triat,   .line,   5, 0, 128),  // idx51 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(6110, Bestiary.tricker, .line,   2, 0, 128),  // idx52 MIXED 0x26 x2 X=16,240
+            cue(6110, Bestiary.triat,   .line,   3, 0, 128),  // idx52 MIXED 0x25 x3 ARMORED-8HP X=128,64,192
+            cue(6238, Bestiary.triat,   .line,   5, 0, 128),  // idx53 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(6366, Bestiary.tricker, .line,   4, 0, 128),  // idx54 MIXED 0x26 x4 X=240,240,16,16
+            cue(6366, Bestiary.triat,   .line,   5, 0, 128),  // idx54 MIXED 0x25 x5 ARMORED-8HP X=80,176,32,128,224
+            cue(6494, Bestiary.triat,   .line,   5, 0, 128),  // idx55 0x25 ARMORED-8HP X=80,176,32,128,224
+            cue(6622, Bestiary.arbleby, .stream, 4, 0, 128),  // idx56 0x1A swoop
+            cue(6750, Bestiary.arbleby, .stream, 4, 0, 128),  // idx57 0x1A swoop
+            cue(6878, Bestiary.arbleby, .stream, 4, 0, 128),  // idx58 0x1A swoop
+            cue(7006, Bestiary.arbleby, .stream, 4, 0, 128),  // idx59 0x1A swoop
         ]
+        // Wave-3b: line/arc waves get the ROM per-member entry stagger (see asteroid()).
+        let staggered = waves.map { $0.wave.formation == .line || $0.wave.formation == .arc
+            ? $0.withEntryStagger(Tuning.astNebEntryStagger) : $0 }
         return Level(id: .nebula, scrollSpeed: Tuning.scrollSpeed, scrollLength: 7392,
-                     waves: waves, boss: BossSpec(id: "belzebul", hp: 80),
+                     waves: staggered, boss: BossSpec(id: "belzebul", hp: 80),
                      background: BackgroundRef("nebula"), music: "nebula")
     }
 }
