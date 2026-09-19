@@ -68,6 +68,29 @@ public final class World {
 
     public func add(_ e: Entity) { entities.append(e) }
 
+    /// ROM-faithful mid-sim enemy birth (dririt self-split, dilon carrier). The ROM shares ONE 12-slot
+    /// wave-enemy pool (@0xCA00) across wave members AND children, and a spawn that finds no free slot is
+    /// SILENTLY DROPPED — so a cascade is hard-capped at 12 concurrent pool enemies. We reproduce the cap
+    /// by counting live `Enemy` entities and refusing at the limit; children count identically to wave
+    /// members (they ARE `Enemy`), so the population/threat metric picks them up automatically.
+    /// Live count of wave-pool enemies (the ROM's 0xCA00 pool). Used for the 12-slot cap.
+    public func poolEnemyCount() -> Int {
+        var n = 0
+        for e in entities where e is Enemy { n += 1 }
+        return n
+    }
+
+    @discardableResult
+    public func spawnPoolEnemy(_ make: () -> Enemy, at: Vec2, configure: (Enemy) -> Void) -> Bool {
+        guard poolEnemyCount() < Tuning.enemyPoolSlots else { return false }
+        let child = make()
+        child.position = at
+        child.anchorX = at.x
+        configure(child)
+        entities.append(child)
+        return true
+    }
+
     func addScore(_ p: Int) { score += p; hiScore = max(hiScore, score) }
 
     func onBossDefeated() { bossDefeated = true; mode = .playing; spawner.reset() }

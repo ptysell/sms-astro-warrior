@@ -71,81 +71,102 @@ public enum Bestiary {
     // —— Asteroid Zone ——  (romType handlers 0x17/0x1B/0x1D/0x1E/0x21/0x24, bank1; 2026-08 decode,
     // re-verified against the ROM tables. hp/points/hitbox/indestructible ROM-EXACT; movement/attack best-fit;
     // NAMES provisional — only tinker=0x21 & arbleby=0x1A anchored.)
-    public static func aster() -> Enemy {          // romType 0x1B @0x4D66 — center sweeper, 1-HP, no fire
+    public static func aster() -> Enemy {          // romType 0x1B @0x4D66 — centre-launch decelerating fan, 1-HP, no fire
+        // Wave-3b MOTION: 6 members burst from screen-centre (X=128) diagonally (vx=4.0,vy=2.0), each
+        // decelerating |vx| per-member (dir/decel from the ROM record via memberIndex) to a straight fall.
         Enemy(at: .zero, sprite: SpriteRef("aster"), hitbox: .circle(r: 8),
               hp: 1, points: 100,
-              movement: Weave(speed: 1.4, amp: 40, freq: 0.05),
+              movement: AsterFan(),
               attack: NoAttack())
     }
-    public static func shamir() -> Enemy {         // romType 0x17 @0x49AC — aimed diver/rammer, 1-HP, no fire
+    public static func shamir() -> Enemy {         // romType 0x17 @0x49AC — descend then homing ram, 1-HP, no fire
+        // Wave-3b MOTION: descend 1.0 until below the player, then homing ram at 0.9375 (aim/2), re-aimed
+        // every 8f. Never fires (no 0x18a6 in handler).
         Enemy(at: .zero, sprite: SpriteRef("shamir"), hitbox: .circle(r: 8),
               hp: 1, points: 200,
-              movement: Dive(speed: 2.0),
+              movement: ShamirRam(),
               attack: NoAttack())
     }
-    public static func ufolick() -> Enemy {        // romType 0x24 @0x5302 — edge sweeper + 6-shot burst, 1-HP
+    public static func ufolick() -> Enemy {        // romType 0x24 @0x5302 — edge-entry dive/reverse + 6-shot burst, 1-HP
+        // Wave-3b MOTION: enter the edge OPPOSITE the player, descend 2.0, reverse to UP 4.0 at the player
+        // row and fire a one-shot 6-shot fan (UfolickBurst). Not loop-gated (fires on loop 0).
         Enemy(at: .zero, sprite: SpriteRef("ufolick"), hitbox: .circle(r: 8),
               hp: 1, points: 200,
-              movement: Weave(speed: 1.2, amp: 60, freq: 0.04),
-              attack: RingFire(interval: 90, count: 6, bulletSpeed: 2.0))
+              movement: EdgeEntryReverse(),
+              attack: UfolickBurst())
     }
-    public static func burdle() -> Enemy {         // romType 0x1E @0x4EA7 — descend, turn, aimed shot, 1-HP
+    public static func burdle() -> Enemy {         // romType 0x1E @0x4EA7 — descend then 16f diagonal veer, 1-HP
+        // Wave-3b MOTION: descend 2.0; at 32px above the player, a 16-frame veer (2.0,2.0) toward the
+        // player's side, then straight down. Fire is LOOP-GATED (0xC240>=3) → SILENT on loop 0 → NoAttack.
         Enemy(at: .zero, sprite: SpriteRef("burdle"), hitbox: .circle(r: 7),
               hp: 1, points: 100,
-              movement: Descend(speed: 1.3),
-              attack: AimedShot(interval: 100, bulletSpeed: 2.2))
+              movement: BurdleVeer(),
+              attack: NoAttack())
     }
-    public static func ashion() -> Enemy {         // romType 0x1D @0x4DE5 — descend + shot, survives a hit (~2-HP)
+    public static func ashion() -> Enemy {         // romType 0x1D @0x4DE5 — straight descender, survives a glancing hit (~2-HP)
+        // Wave-3b MOTION: straight down 2.0 (ROM speeds up to 4.0 after a glancing hit — a collision
+        // response the sim can't express per-hit yet; modeled as hp:2). Fire LOOP-GATED → NoAttack loop 0.
         Enemy(at: .zero, sprite: SpriteRef("ashion"), hitbox: .circle(r: 7),
               hp: 2, points: 100,
-              movement: Descend(speed: 1.2),
-              attack: AimedShot(interval: 110, bulletSpeed: 2.2))
+              movement: AshionDrop(),
+              attack: NoAttack())
     }
-    public static func tinker() -> Enemy {         // romType 0x21 @0x50C3 — smallest box, aimed random-accel diver, 1-HP
+    public static func tinker() -> Enemy {         // romType 0x21 @0x50C3 — delayed aim × random-scale dive, 1-HP
+        // Wave-3b MOTION: after a spawn delay, aim (1.875) × random scale {3.0,1.5,2.0,2.5} then coast.
+        // RNG scale is hardware-random in the ROM → sim draws from the seeded RNG (distribution parity).
         Enemy(at: .zero, sprite: SpriteRef("tinker"), hitbox: .circle(r: 4),
               hp: 1, points: 100,
-              movement: Dive(speed: 2.2),
+              movement: AimScaleDive(),
               attack: NoAttack())
     }
 
     // —— Nebula Zone ——  (romType handlers 0x1A/0x1F/0x20/0x23/0x25/0x26, bank1)
-    public static func caborn() -> Enemy {         // romType 0x1F @0x4F41 — INDESTRUCTIBLE drifting debris
+    public static func caborn() -> Enemy {         // romType 0x1F @0x4F41 — INDESTRUCTIBLE drifting debris, 0 pts
+        // Wave-3b MOTION: pure straight-down integrator drift 1.0 px/f (1.5 on loop>=3). No fire.
         Enemy(at: .zero, sprite: SpriteRef("caborn"), hitbox: .circle(r: 2),
               hp: 1, points: 0,
-              movement: Descend(speed: 1.0),
+              movement: StraightDescend(lo: Tuning.cabornDescend, hi: Tuning.cabornDescendHi),
               attack: NoAttack(),
               indestructible: true)
     }
-    public static func dilon() -> Enemy {          // romType 0x23 @0x51EB — carrier: hovers, launches type-0x18 divers
-        // TODO: carrier-spawn (births type-0x18 divers) has no sim primitive yet — modeled inert.
+    public static func dilon() -> Enemy {          // romType 0x23 @0x51EB — carrier: descends, orbits, launches type-0x18 divers
+        // Wave-3b MOTION: descend 2.0, then 8-dir orbit (reuse gyron's rotation LUT), launching a
+        // type-0x18 sharlin diver (flight-path P8/P9) every ~32f via World.spawnPoolEnemy.
         Enemy(at: .zero, sprite: SpriteRef("dilon"), hitbox: .circle(r: 6),
               hp: 1, points: 200,
-              movement: FormationHold(speed: 0.6),
+              movement: DilonCarrier(),
               attack: NoAttack())
     }
-    public static func triat() -> Enemy {          // romType 0x25 @0x5428 — ARMORED 8-HP sweeper + 2-shot
+    public static func triat() -> Enemy {          // romType 0x25 @0x5428 — ARMORED 8-HP straight descender + 2-shot spread
+        // Wave-3b MOTION: pure straight-down 1.0 (1.5 loop>=3), armored 8-HP; every 64f a fixed 2-shot
+        // down-V spread (SpreadFire, NOT aimed). Laser one-shot (0xC610) deferred (needs a weapon flag).
         Enemy(at: .zero, sprite: SpriteRef("triat"), hitbox: .circle(r: 6),
               hp: 8, points: 200,
-              movement: Weave(speed: 1.0, amp: 50, freq: 0.04),
-              attack: AimedShot(interval: 120, bulletSpeed: 2.0))
+              movement: StraightDescend(lo: Tuning.triatDescend, hi: Tuning.triatDescendHi),
+              attack: SpreadFire(interval: Tuning.triatSpreadInterval))
     }
     public static func dririt() -> Enemy {         // romType 0x20 @0x4FB5 — self-splitter, 1-HP, no fire
-        // TODO: on spawn it clones a mirrored sibling — no split primitive yet; modeled as plain descent.
+        // Wave-3b MOTION: random speed S on both axes; descend 16f then split into a mirrored diagonal
+        // pair (child dir = parent XOR left/right) repeatedly until past screenY 128. Cascade pool-capped.
         Enemy(at: .zero, sprite: SpriteRef("dririt"), hitbox: .circle(r: 8),
               hp: 1, points: 100,
-              movement: Descend(speed: 1.4),
+              movement: DriritSplit(),
               attack: NoAttack())
     }
-    public static func arbleby() -> Enemy {        // romType 0x1A @0x4C64 — largest box, swoop-to-player + fire, 1-HP
+    public static func arbleby() -> Enemy {        // romType 0x1A @0x4C64 — multi-pass swoop-to-player + aimed fire, 1-HP
+        // Wave-3b MOTION: diagonal swoop onto the player column, overshoot, hover, mirror-sweep (multi-pass).
+        // Aimed fire is UNGATED (fires on loop 0) — via AimedShot at the shared 1.875 px/f.
         Enemy(at: .zero, sprite: SpriteRef("arbleby"), hitbox: .circle(r: 10),
               hp: 1, points: 200,
-              movement: Dive(speed: 1.8),
-              attack: AimedShot(interval: 100, bulletSpeed: 2.2))
+              movement: ArblebySwoop(),
+              attack: AimedShot(interval: 60, bulletSpeed: Tuning.aimUnitSpeed))
     }
-    public static func tricker() -> Enemy {        // romType 0x26 @0x54B8 — edge ring-fire emplacement, 1-HP
+    public static func tricker() -> Enemy {        // romType 0x26 @0x54B8 — edge-column dropper, aimed + jitter, 1-HP
+        // Wave-3b MOTION: edge column, descend 2.0, then a random vertical jitter at the player's row.
+        // Aimed single shot (1.875 px/f) — NOT a ring (corrects the old RingFire).
         Enemy(at: .zero, sprite: SpriteRef("tricker"), hitbox: .circle(r: 8),
               hp: 1, points: 100,
-              movement: Descend(speed: 0.8),
-              attack: RingFire(interval: 80, count: 4, bulletSpeed: 1.8))
+              movement: TrickerDrop(),
+              attack: AimedShot(interval: 48, bulletSpeed: Tuning.aimUnitSpeed))
     }
 }

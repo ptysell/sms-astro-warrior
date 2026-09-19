@@ -35,6 +35,14 @@ public final class Enemy: Entity, Damageable, Faction {
     // Flight-script index (ROM record +0x13) for type-0x18 sharlin — set per-wave by the spawner
     // from Wave.pathIndex; FlightPathMove reads it. Default 0 (P0) for a bare-constructed sharlin.
     public var flightPathIndex: Int = 0
+    // Member ordinal within its wave (0-based), stamped by WaveSpawner. Lets a per-species mover read
+    // per-member ROM record params (e.g. aster's per-member direction/decel). Default 0.
+    public var memberIndex: Int = 0
+    // Extra motion-scratch for the Wave-3b Asteroid/Nebula movers (see Behaviors/AsteroidNebulaMovers.swift):
+    public var diverTimer: Int = 0                  // dilon carrier: frames to next diver launch (+0x11)
+    public var rotIndex: Int = 0                    // dilon carrier: 8-dir rotation-script index (+0x26)
+    public var fireBurst = false                    // ufolick: mover→attack one-shot burst signal
+    public var enteredLeft = false                  // ufolick: which edge it entered from (burst side)
 
     public init(at p: Vec2, sprite: SpriteRef, hitbox: Hitbox,
                 hp: Int, points: Int,

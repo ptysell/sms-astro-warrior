@@ -177,16 +177,25 @@ func isThreat(_ t: Int) -> Bool { isEnemy(t) || t == 0x14 }
 
 // The ROM's own survival bot (kept in sync with ParityProbe's dodge()). Closed-loop on the
 // ROM only — we RECORD the buttons it presses so we can replay them open-loop into the sim.
-@MainActor func dodge() -> RefButtons {
+//
+// `fire` controls whether the bot fires. The DEFAULT tape fires (a faithful playthrough), but the
+// fire-always tape CONFOUNDS the population metric: the replayed player mows any enemy in its
+// straight-up fire path, and a sub-frame motion difference flips a hit to a miss — so faithful enemy
+// motion is punished/rewarded by luck of alignment, not fidelity (verified: an enemy's post-descent
+// motion doesn't change its fate; the fire during descent does). A NO-FIRE tape (`nofire` mode) lets
+// enemies live out their ROM lifetimes on BOTH cores, so the population curve measures motion +
+// schedule fidelity, not player aim. Pair it with the pool-cap (both cores fill the 12-slot pool).
+@MainActor func dodge(fire: Bool = true) -> RefButtons {
     let px = word(0xC60A), py = word(0xC608)
-    guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated (0,0) → neutral, no phantom down+right
+    let neutral: RefButtons = fire ? [.fire] : []
+    guard px > 1 || py > 1 else { return neutral }   // entity not yet populated (0,0) → neutral, no phantom down+right
     var threatX: Double? = nil, best = 1e9
     for s in slots {
         let t = ram(s); if !isThreat(t) { continue }
         let ex = word(s + 0x0A), ey = word(s + 0x08), dy = py - ey
         if dy > -24, dy < 90 { let d = abs(ex - px) + dy * 0.25; if d < best { best = d; threatX = ex } }
     }
-    var b: RefButtons = [.fire]
+    var b: RefButtons = neutral
     if let tx = threatX { b.insert(tx > px ? .left : .right) }
     if py < 150 { b.insert(.down) } else if py > 176 { b.insert(.up) }
     if px < 40 { b.remove(.left); b.insert(.right) }
@@ -202,7 +211,7 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     let enemyTypes: [Int]            // types present this frame (for the timeline)
 }
 
-@MainActor func captureROM(variant: UInt8) -> (tape: [RefButtons], frames: [Frame], spawnTotal: Int) {
+@MainActor func captureROM(variant: UInt8, fire: Bool = true) -> (tape: [RefButtons], frames: [Frame], spawnTotal: Int) {
     core.reset()
     // Boot: title → gameplay (same sequence ParityProbe uses).
     for _ in 0..<300 { core.step(buttons: [], pause: false) }
@@ -223,7 +232,7 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     var lastType = [Int](repeating: 0, count: slots.count)   // for cumulative-spawn counting
     var spawnTotal = 0
     for _ in 0..<N {
-        let b = dodge()
+        let b = dodge(fire: fire)
         tape.append(b)
         warpedStep(b)
         var count = 0, types: [Int] = []
@@ -276,66 +285,69 @@ func fmt(_ d: Double) -> String { d.isNaN ? "  n/a" : String(format: "%6.1f", d)
 func f0(_ i: Int) -> String { String(format: "%4d", i) }
 func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k } }
 
-@MainActor func scoreZone(_ zone: Zone) -> Double {
-    let (tape, rom, romSpawnTotal) = captureROM(variant: zone.variant)
+@MainActor func scoreZone(_ zone: Zone, fire: Bool = true) -> Double {
+    let (tape, rom, romSpawnTotal) = captureROM(variant: zone.variant, fire: fire)
     let (sim, simSpawnTotal) = runSim(tape: tape, zone: zone)
     let n = min(rom.count, sim.count)
     // Skip boot transients: the ROM player entity's position words are 0 for the first frames
     // after gameplay starts (entity not yet populated). WARMUP is excluded from every metric.
     let WARMUP = min(60, n)
 
-    // —— Player-position error (only while BOTH ships alive AND the ROM player is on-field) ——
+    // —— PRE-FIRST-DEATH window: the headline is measured over [WARMUP, hi) where hi is the FIRST
+    // death of EITHER core. After a death the warped ROM RESTARTS the stage (re-runs the 180f intro
+    // and respawns from idx5) while the SIM plays on — so post-death frames compare a restarting ROM
+    // to a continuing SIM, a death-handling artifact, NOT a fidelity gap. Gating to pre-first-death
+    // removes it. Galaxy is death-free so hi == n (unchanged). ——
+    let firstRomDeath = rom.firstIndex { !$0.alive } ?? n
+    let firstSimDeath = sim.firstIndex { !$0.alive } ?? n
+    let hi = max(WARMUP + 1, min(firstRomDeath, firstSimDeath, n))
+
+    // —— Player-position error (both ships alive AND the ROM player is on-field), over [WARMUP, hi) ——
     var perr: [Double] = []
-    for f in WARMUP..<n where rom[f].alive && sim[f].alive && rom[f].px > 1 {
+    for f in WARMUP..<hi where rom[f].alive && sim[f].alive && rom[f].px > 1 {
         let dx = rom[f].px - sim[f].px, dy = rom[f].py - sim[f].py
         perr.append((dx * dx + dy * dy).squareRoot())
     }
     let meanPErr = perr.isEmpty ? Double.nan : perr.reduce(0, +) / Double(perr.count)
     let maxPErr  = perr.max() ?? .nan
-    let firstRomDeath = rom.firstIndex { !$0.alive } ?? n
-    let firstSimDeath = sim.firstIndex { !$0.alive } ?? n
 
-    // —— Enemy population (measured over [WARMUP, n); timeline below uses absolute frames) ——
+    // —— Enemy population, measured over the SAME pre-death window [WARMUP, hi) ——
     let romCounts = rom.prefix(n).map { $0.enemyCount }
     let simCounts = sim.prefix(n).map { $0.enemyCount }
-    let measured = max(1, n - WARMUP)
-    let romMean = Double(romCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
-    let simMean = Double(simCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
-    let romPeak = romCounts.max() ?? 0, simPeak = simCounts.max() ?? 0
-    // The count term is gated on BOTH ships alive — same window as the player-error term — so
-    // post-death desync (each core dies at a different frame, then clears its field) can't dominate.
-    // Galaxy is death-free (both-alive == whole window) so its number is unchanged; the warped zones,
-    // where the bot dies early, are now measured over their clean pre-death window. (sim-empty is still
-    // reported over the whole window as an informational signal.)
+    let measured = max(1, hi - WARMUP)
+    let romMean = Double(romCounts[WARMUP..<hi].reduce(0, +)) / Double(measured)
+    let simMean = Double(simCounts[WARMUP..<hi].reduce(0, +)) / Double(measured)
+    let romPeak = romCounts[WARMUP..<hi].max() ?? 0, simPeak = simCounts[WARMUP..<hi].max() ?? 0
     var countDiffSum = 0, framesSimEmptyRomNot = 0, bothAlive = 0
-    for f in WARMUP..<n {
+    for f in WARMUP..<hi {
         if simCounts[f] == 0 && romCounts[f] > 0 { framesSimEmptyRomNot += 1 }
         guard rom[f].alive && sim[f].alive else { continue }
         bothAlive += 1
         countDiffSum += abs(romCounts[f] - simCounts[f])
     }
     let meanCountDiff = Double(countDiffSum) / Double(max(1, bothAlive))
+    let tapeKind = fire ? "dodge+FIRE tape" : "dodge NO-FIRE tape (de-confounded motion/schedule)"
 
     print("""
     ╔══════════════════════════════════════════════════════════════════════╗
-    ║  ParityScore — \(zone.rawValue.uppercased()) stage, \(f0(n))-frame window (~\(n/60)s)          ║
-    ║  ROM ground truth (dodge tape)  vs  GameSim.World (same tape)          ║
+    ║  ParityScore — \(zone.rawValue.uppercased()) stage, headline window [\(f0(WARMUP)),\(f0(hi))) of \(f0(n))f       ║
+    ║  \(tapeKind)
     ║  stage-warp: ROM 0xC240=\(zone.variant)   SIM World.setZone(\(zone.simIndex))                       ║
     ╚══════════════════════════════════════════════════════════════════════╝
 
-    PLAYER POSITION  (screen px, measured only while both ships alive)
-        frames both-alive : \(f0(perr.count)) / \(f0(measured))  (after \(WARMUP)-frame warmup)
+    PLAYER POSITION  (screen px, measured only while both ships alive, pre-first-death)
+        frames both-alive : \(f0(perr.count)) / \(f0(measured))  (window [\(WARMUP),\(hi)))
         mean error        : \(fmt(meanPErr)) px
         max  error        : \(fmt(maxPErr)) px
-        first death       : ROM @\(f0(firstRomDeath))   SIM @\(f0(firstSimDeath))
+        first death       : ROM @\(f0(firstRomDeath))   SIM @\(f0(firstSimDeath))  → headline caps at \(f0(hi))
         pos @f\(WARMUP)        : ROM (\(fmt(rom[WARMUP].px)),\(fmt(rom[WARMUP].py)))  SIM (\(fmt(sim[WARMUP].px)),\(fmt(sim[WARMUP].py)))
 
-    ENEMY POPULATION  (active enemies on field, per frame)
+    ENEMY POPULATION  (active enemies on field, per frame, pre-first-death)
         mean count        : ROM \(fmt(romMean))   SIM \(fmt(simMean))
         peak count        : ROM \(f0(romPeak))     SIM \(f0(simPeak))
         mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame  (over \(f0(bothAlive)) both-alive frames)
         frames sim-empty  : \(f0(framesSimEmptyRomNot)) / \(f0(measured))  (ROM had enemies, sim had none)
-        cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← input-independent → pure SCHEDULE fidelity
+        cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← full-window, input-independent → SCHEDULE fidelity
 
     SPAWN TIMELINE  (first frame the field holds ≥k enemies)
             k :   1    2    3    4    6    8
@@ -353,22 +365,32 @@ func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k
                      f, r, s, rom[f].waveIdx, bar(r), bar(s)))
     }
 
-    // —— Headline composite (v1): lower is closer. Documented so "reduce the number" has a target.
-    // Both terms are now gated on both-ships-alive, so the formula is genuinely apples-to-apples
-    // across zones (a zone where the bot dies early is scored over its pre-death window, not the
-    // post-death chaos). Keep the formula fixed across zones.
-    let headline = (meanPErr.isNaN ? 0 : meanPErr) + 6 * meanCountDiff
-    print(String(format: "\nDIVERGENCE (v1 = meanPlayerErr + 6·mean|Δcount|) = %.1f   ← drive this down\n", headline))
+    // —— Headline composite: lower is closer. Two regimes:
+    //   • FIRE (v1)  = meanPlayerErr + 6·mean|Δcount|. Player-err is meaningful for the death-free zone
+    //     (Galaxy player physics); for warped zones it is partly death-timing-confounded.
+    //   • NO-FIRE (motion/schedule, de-confounded) = 6·mean|Δcount| ONLY. With no player fire, enemies
+    //     live out their ROM lifetimes on both cores, so |Δcount| measures motion + schedule fidelity
+    //     cleanly. Player-err is DROPPED here — it is confounded by death timing (which enemy the
+    //     pacifist bot collides with, and thus the pre-death window, shifts with any motion change).
+    let headline = fire ? (meanPErr.isNaN ? 0 : meanPErr) + 6 * meanCountDiff
+                        : 6 * meanCountDiff
+    let formula = fire ? "v1 = meanPlayerErr + 6·mean|Δcount|"
+                       : "motion/schedule = 6·mean|Δcount| (de-confounded)"
+    print(String(format: "\nDIVERGENCE (%@) = %.1f   ← drive this down\n", formula, headline))
     return headline
 }
 
 // ── DISPATCH ────────────────────────────────────────────────────────────────────────────
+// `nofire` uses the de-confounded no-fire tape (enemies live out their ROM lifetimes on both cores),
+// which — paired with the pre-first-death headline window — scores motion + schedule fidelity without
+// the player-mowing confound. Combine with a zone or `all`.
+let useFire = !args.contains("nofire")
 if args.contains("all") {
     var results: [(Zone, Double)] = []
-    for z in Zone.allCases { results.append((z, scoreZone(z))) }
-    print("═══ ALL ZONES — DIVERGENCE (v1, identical formula) ═══")
+    for z in Zone.allCases { results.append((z, scoreZone(z, fire: useFire))) }
+    print("═══ ALL ZONES — DIVERGENCE (v1, \(useFire ? "dodge+FIRE" : "NO-FIRE de-confounded"), pre-first-death window) ═══")
     for (z, d) in results { print(String(format: "  %-9@ %6.1f", z.rawValue, d)) }
 } else {
     let z = parseZone(args) ?? .galaxy
-    _ = scoreZone(z)
+    _ = scoreZone(z, fire: useFire)
 }
