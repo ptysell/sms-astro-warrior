@@ -164,4 +164,13 @@ public final class World {
 
     /// Seed the title fire-latch so a currently-held fire isn't seen as a fresh press.
     public func primeTitleFire(_ held: Bool) { startFireLatch = held }
+
+    /// ADDITIVE parity/test hook (Wave 3a stage-warp): start this world in `zone`
+    /// (0 = Galaxy default, 1 = Asteroid, 2 = Nebula) before play begins. Re-arms the campaign and
+    /// LevelDirector to that zone's Level; the field/scroll are still at their fresh origin. Purely
+    /// additive — Galaxy (zone 0) is byte-for-byte identical to a plain `World()`, so no default
+    /// behavior, schedule, tuning, or motion changes. Call before the first `step(...)`.
+    public func setZone(_ zone: Int) {
+        campaign.setZone(zone, director)
+    }
 }
