@@ -69,7 +69,7 @@ guard core.load(rom: data) else { fputs("ParityScore: ROM load failed\n", stderr
 
 let slots0 = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
 func isFX0(_ t: Int) -> Bool { t == 11 || t == 12 || t == 19 }
-func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX0(t) }
+func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && t != 0x14 && !isFX0(t) }
 
 // ── CENSUS MODE (`swift run ParityScore census [zone] [frames]`) ────────────────────────────
 // Dumps the ROM's REAL schedule for a zone, keyed by wave-index (0xC211): for each index, the
@@ -167,7 +167,13 @@ let slots = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
 @MainActor func romPlayerAlive() -> Bool { ram(0xC600) == 1 }
 @MainActor func romWaveIdx() -> Int { ram(0xC211) }
 func isFX(_ t: Int) -> Bool { t == 11 || t == 12 || t == 19 }
-func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(t) }
+// Enemy PROJECTILES (type 0x14, the aimed bullet @0x18EE) are not population — the sim tracks its
+// enemy fire as Bullet, not Enemy, so counting the ROM's 0x14 as an "enemy" is an apples-to-oranges
+// inflation (it appears in later-loop / ungated-fire zones like Nebula). Exclude it.
+func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && t != 0x14 && !isFX(t) }
+// The survival bot should DODGE enemy fire too, so its threat set is the population enemies PLUS
+// the enemy bullet (0x14). (Population counting and threat-avoidance want opposite things about 0x14.)
+func isThreat(_ t: Int) -> Bool { isEnemy(t) || t == 0x14 }
 
 // The ROM's own survival bot (kept in sync with ParityProbe's dodge()). Closed-loop on the
 // ROM only — we RECORD the buttons it presses so we can replay them open-loop into the sim.
@@ -176,7 +182,7 @@ func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(
     guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated (0,0) → neutral, no phantom down+right
     var threatX: Double? = nil, best = 1e9
     for s in slots {
-        let t = ram(s); if !isEnemy(t) { continue }
+        let t = ram(s); if !isThreat(t) { continue }
         let ex = word(s + 0x0A), ey = word(s + 0x08), dy = py - ey
         if dy > -24, dy < 90 { let d = abs(ex - px) + dy * 0.25; if d < best { best = d; threatX = ex } }
     }
@@ -296,12 +302,19 @@ func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k
     let romMean = Double(romCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
     let simMean = Double(simCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
     let romPeak = romCounts.max() ?? 0, simPeak = simCounts.max() ?? 0
-    var countDiffSum = 0, framesSimEmptyRomNot = 0
+    // The count term is gated on BOTH ships alive — same window as the player-error term — so
+    // post-death desync (each core dies at a different frame, then clears its field) can't dominate.
+    // Galaxy is death-free (both-alive == whole window) so its number is unchanged; the warped zones,
+    // where the bot dies early, are now measured over their clean pre-death window. (sim-empty is still
+    // reported over the whole window as an informational signal.)
+    var countDiffSum = 0, framesSimEmptyRomNot = 0, bothAlive = 0
     for f in WARMUP..<n {
-        countDiffSum += abs(romCounts[f] - simCounts[f])
         if simCounts[f] == 0 && romCounts[f] > 0 { framesSimEmptyRomNot += 1 }
+        guard rom[f].alive && sim[f].alive else { continue }
+        bothAlive += 1
+        countDiffSum += abs(romCounts[f] - simCounts[f])
     }
-    let meanCountDiff = Double(countDiffSum) / Double(measured)
+    let meanCountDiff = Double(countDiffSum) / Double(max(1, bothAlive))
 
     print("""
     ╔══════════════════════════════════════════════════════════════════════╗
@@ -320,7 +333,7 @@ func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k
     ENEMY POPULATION  (active enemies on field, per frame)
         mean count        : ROM \(fmt(romMean))   SIM \(fmt(simMean))
         peak count        : ROM \(f0(romPeak))     SIM \(f0(simPeak))
-        mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame
+        mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame  (over \(f0(bothAlive)) both-alive frames)
         frames sim-empty  : \(f0(framesSimEmptyRomNot)) / \(f0(measured))  (ROM had enemies, sim had none)
         cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← input-independent → pure SCHEDULE fidelity
 
@@ -341,7 +354,9 @@ func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k
     }
 
     // —— Headline composite (v1): lower is closer. Documented so "reduce the number" has a target.
-    // FORMULA IS FIXED across zones — apples-to-apples. Do NOT change it.
+    // Both terms are now gated on both-ships-alive, so the formula is genuinely apples-to-apples
+    // across zones (a zone where the bot dies early is scored over its pre-death window, not the
+    // post-death chaos). Keep the formula fixed across zones.
     let headline = (meanPErr.isNaN ? 0 : meanPErr) + 6 * meanCountDiff
     print(String(format: "\nDIVERGENCE (v1 = meanPlayerErr + 6·mean|Δcount|) = %.1f   ← drive this down\n", headline))
     return headline
