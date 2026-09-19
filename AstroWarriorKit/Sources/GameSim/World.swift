@@ -152,7 +152,10 @@ public final class World {
         bossDefeated = false
         spawner.reset()
         campaign.reset(director)                    // back to zone 1, loop 0
+        scrollY = 0                                 // camera back to the field origin
+        rng = RNG(seed: Tuning.rngSeed)             // reseed so a fresh game is identical to a fresh World()
         player.isDead = false
+        player.hp = 1                               // 1-hit ship; explicit so a restart never starts at hp<=0
         player.position = Vec2(LOGICAL_WIDTH / 2, Tuning.shipStartY)
         player.form = 1
         player.blocksDestroyed = 0
