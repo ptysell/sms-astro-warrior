@@ -56,7 +56,13 @@ let package = Package(
         .target(name: "GameSim"),
 
         // Presentation skins — each depends ONLY on GameSim (§4, §6).
-        .target(name: "GameRenderSpriteKit", dependencies: ["GameSim"]),
+        // GameRenderSpriteKit ships OUR-OWN recreated Galaxy art: the palette color list is a
+        // committed resource; the sprite/tile pixel grids are hand-authored in code (no ROM bytes).
+        .target(
+            name: "GameRenderSpriteKit",
+            dependencies: ["GameSim"],
+            resources: [.copy("Assets/galaxy/GalaxyPalette.json")]
+        ),
         .target(name: "GameAudio", dependencies: ["GameSim"]),
         .target(name: "GameInput", dependencies: ["GameSim"]),
 
@@ -81,6 +87,11 @@ let package = Package(
         // Its OUTPUT (PNG/JSON under /tmp/astro-refrips) is NEVER committed — see Sources/AssetRip/main.swift.
         .executableTarget(name: "AssetRip", dependencies: ["ReferenceEmu"]),
 
+        // Headless Galaxy screenshot: drives the pure sim a few frames, then renders the SpriteKit
+        // Galaxy skin (our starfield + recreated sprites + fortress) to a PNG via SKRenderer/Metal.
+        // Verification only — links no ROM. See Sources/GalaxyShot/main.swift.
+        .executableTarget(name: "GalaxyShot", dependencies: ["GameSim", "GameRenderSpriteKit"]),
+
         // Side-by-side parity debugger: ROM (left) vs our sim (right), one input stream.
         .target(
             name: "ParityDebug",
@@ -92,6 +103,9 @@ let package = Package(
         .testTarget(name: "GameSimTests", dependencies: ["GameSim"]),
         .testTarget(name: "GameInputTests", dependencies: ["GameInput"]),
         .testTarget(name: "ReferenceEmuTests", dependencies: ["ReferenceEmu"]),
+        // Galaxy render-layer tests: palette RGB matches the reference colors, and every Galaxy
+        // species resolves to a recreated texture.
+        .testTarget(name: "GameRenderSpriteKitTests", dependencies: ["GameRenderSpriteKit", "GameSim"]),
     ],
     swiftLanguageModes: [.v6]
 )

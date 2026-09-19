@@ -1,0 +1,39 @@
+{
+  "_note": "OUR-OWN Galaxy-zone palette. These are the 32 exact RGB COLORS of the original's Galaxy CRAM palette (colors are facts, not copyrightable). Captured once from the reference-emulator CRAM readout (AssetRip); NO ROM bytes, tiles, or sprites are stored here — only the color numbers. Indices 0-15 = background palette, 16-31 = sprite palette. Each channel is one of 0/85/170/255 (the SMS 2-bit-per-channel quantization).",
+  "background": [
+    { "index": 0,  "hex": "#000000", "r": 0,   "g": 0,   "b": 0   },
+    { "index": 1,  "hex": "#FFFFFF", "r": 255, "g": 255, "b": 255 },
+    { "index": 2,  "hex": "#00AAAA", "r": 0,   "g": 170, "b": 170 },
+    { "index": 3,  "hex": "#5555AA", "r": 85,  "g": 85,  "b": 170 },
+    { "index": 4,  "hex": "#000000", "r": 0,   "g": 0,   "b": 0   },
+    { "index": 5,  "hex": "#00AAAA", "r": 0,   "g": 170, "b": 170 },
+    { "index": 6,  "hex": "#FF0000", "r": 255, "g": 0,   "b": 0   },
+    { "index": 7,  "hex": "#AA0000", "r": 170, "g": 0,   "b": 0   },
+    { "index": 8,  "hex": "#550000", "r": 85,  "g": 0,   "b": 0   },
+    { "index": 9,  "hex": "#FFFF00", "r": 255, "g": 255, "b": 0   },
+    { "index": 10, "hex": "#FFAAFF", "r": 255, "g": 170, "b": 255 },
+    { "index": 11, "hex": "#AA0000", "r": 170, "g": 0,   "b": 0   },
+    { "index": 12, "hex": "#FF0000", "r": 255, "g": 0,   "b": 0   },
+    { "index": 13, "hex": "#AA00FF", "r": 170, "g": 0,   "b": 255 },
+    { "index": 14, "hex": "#0055FF", "r": 0,   "g": 85,  "b": 255 },
+    { "index": 15, "hex": "#000000", "r": 0,   "g": 0,   "b": 0   }
+  ],
+  "sprite": [
+    { "index": 16, "hex": "#000000", "r": 0,   "g": 0,   "b": 0   },
+    { "index": 17, "hex": "#FFFFFF", "r": 255, "g": 255, "b": 255 },
+    { "index": 18, "hex": "#FF00AA", "r": 255, "g": 0,   "b": 170 },
+    { "index": 19, "hex": "#FFFF00", "r": 255, "g": 255, "b": 0   },
+    { "index": 20, "hex": "#FF0000", "r": 255, "g": 0,   "b": 0   },
+    { "index": 21, "hex": "#FF5500", "r": 255, "g": 85,  "b": 0   },
+    { "index": 22, "hex": "#00FFFF", "r": 0,   "g": 255, "b": 255 },
+    { "index": 23, "hex": "#00FF00", "r": 0,   "g": 255, "b": 0   },
+    { "index": 24, "hex": "#00AAFF", "r": 0,   "g": 170, "b": 255 },
+    { "index": 25, "hex": "#0000FF", "r": 0,   "g": 0,   "b": 255 },
+    { "index": 26, "hex": "#AAFFAA", "r": 170, "g": 255, "b": 170 },
+    { "index": 27, "hex": "#FFFFAA", "r": 255, "g": 255, "b": 170 },
+    { "index": 28, "hex": "#AAAAAA", "r": 170, "g": 170, "b": 170 },
+    { "index": 29, "hex": "#55FFAA", "r": 85,  "g": 255, "b": 170 },
+    { "index": 30, "hex": "#00FFAA", "r": 0,   "g": 255, "b": 170 },
+    { "index": 31, "hex": "#000000", "r": 0,   "g": 0,   "b": 0   }
+  ]
+}

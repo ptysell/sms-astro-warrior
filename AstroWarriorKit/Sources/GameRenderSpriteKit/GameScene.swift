@@ -19,6 +19,8 @@ public final class GameScene: SKScene {
     private let layer = SKNode()              // single root (texture-loading gotcha)
     private let cam = SKCameraNode()
     private var pool: [SKSpriteNode] = []     // index-pooled placeholder sprites
+    private let backdrop = GalaxyBackdrop()   // parallax starfield + boss fortress (Galaxy skin)
+    private var backdropAdded = false
 
     private var lastTime: TimeInterval = 0
     private var accumulator: Double = 0
@@ -124,22 +126,44 @@ public final class GameScene: SKScene {
     // MARK: render
     private func present(_ snap: Snapshot) {
         let camera = Camera(viewport: size)
+
+        // Galaxy skin: parallax starfield + (boss) fortress behind the sprites. Additive to the
+        // render layer only — the sim, camera, and lockstep path are untouched.
+        let isGalaxy = snap.background.id == "galaxy"
+        if !backdropAdded { layer.addChild(backdrop); backdropAdded = true }
+        backdrop.isHidden = !isGalaxy
+        if isGalaxy {
+            backdrop.setScale(camera.scale)
+            backdrop.position = .zero
+            backdrop.updateStarfield(scrollY: snap.scrollY)
+            let bossPresent = snap.sprites.contains { $0.sprite.id == "zanoni" }
+            backdrop.updateFortress(present: bossPresent, scrollY: snap.scrollY)
+        }
+
         ensurePool(snap.sprites.count)
         for (i, d) in snap.sprites.enumerated() {
             let n = pool[i]
-            let look = Appearance.of(d.sprite)
-            n.texture = ShapeTextures.texture(look.shape)
-            n.colorBlendFactor = 1
-            n.color = look.color
-            // Draw at EXACTLY the collision size carried in the snapshot (visual == hitbox).
-            n.size = CGSize(width: d.size.x * camera.scale, height: d.size.y * camera.scale)
+            if isGalaxy, let t = GalaxyAtlas.texture(for: d.sprite.id) {
+                // Our recreated pixel art — drawn at its NATIVE size (16×16 etc.), full-color.
+                n.texture = t
+                n.colorBlendFactor = 0
+                let px = t.size()
+                n.size = CGSize(width: px.width * camera.scale, height: px.height * camera.scale)
+            } else {
+                // Vector-shape fallback (non-Galaxy zones + not-yet-authored ids): visual == hitbox.
+                let look = Appearance.of(d.sprite)
+                n.texture = ShapeTextures.texture(look.shape)
+                n.colorBlendFactor = 1
+                n.color = look.color
+                n.size = CGSize(width: d.size.x * camera.scale, height: d.size.y * camera.scale)
+            }
             n.position = camera.project(d.pos)
             n.zPosition = CGFloat(d.z)
             n.isHidden = false
         }
         for i in snap.sprites.count..<pool.count { pool[i].isHidden = true }
 
-        for e in snap.events { spawnEffect(e, camera) }
+        for e in snap.events { spawnEffect(e, camera, galaxy: isGalaxy) }
 
         if lastHUD != snap.hud { lastHUD = snap.hud; onHUD?(snap.hud) }
     }
@@ -153,14 +177,16 @@ public final class GameScene: SKScene {
         }
     }
 
-    private func spawnEffect(_ event: Snapshot.Event, _ camera: Camera) {
+    private func spawnEffect(_ event: Snapshot.Event, _ camera: Camera, galaxy: Bool) {
         let (pos, color, size): (Vec2, SKColor, Double)
         switch event {
         case let .explosion(p): (pos, color, size) = (p, .orange, 18)
         case let .playerHit(p): (pos, color, size) = (p, .white, 30)
         }
-        let burst = SKSpriteNode(texture: ShapeTextures.texture(.circle))
-        burst.colorBlendFactor = 1
+        // Galaxy explosions use our recreated burst art (full-color); other zones keep the tinted disc.
+        let useArt = galaxy
+        let burst = SKSpriteNode(texture: useArt ? GalaxyAtlas.explosion : ShapeTextures.texture(.circle))
+        burst.colorBlendFactor = useArt ? 0 : 1
         burst.color = color
         let px = size * camera.scale
         burst.size = CGSize(width: px, height: px)
