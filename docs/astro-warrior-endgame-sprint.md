@@ -13,6 +13,24 @@ faithful 1:1 recreation.**
 Written 2026-09-18 from two adversarial code+ROM sweeps. It supersedes the old plan's Wave-3/4
 sections (we are past Wave 0–2).
 
+> ### Progress log
+> - **Wave 0 — DONE (PR #13).** Boss is killable → zones transition (`Collision` AABB, boss in the
+>   collision set, game-over→restart). Reference-core taps added: `readVRAM/readCRAM/satBase/readSAT`,
+>   `writeRAM` (stage-warp), `psgCaptureReset/psgDrain` — additive, determinism preserved, verified live.
+> - **Wave 1a — DONE (research).** Static-disassembly decode of 7 subsystems, all adversarially
+>   **CONFIRMED** → [`rom-decode-systems.md`](rom-decode-systems.md). Big movers on the §2 map:
+>   enemy **velocities/motion** now ROM-EXACT (integrator `0x0416`, aim table `0x19C0`, flight LUT
+>   `0xA000`/bank6); flight-path engine (`0x4B6A`, 10 scripts); **boss driver** `0x3B94` decoded and the
+>   `0xA858/0xD030` "phase-script" premise **refuted** (they're 16-bit values at `0xC2E2`, not pointers);
+>   **audio driver** fully mapped (`0x34CA`/`0x362B`/`0x395E`/`0x3556`); **power-up block counter FOUND**
+>   (`0xC228`, wrap-12 → `0xC615`) + ladder index `0xC229`/tables `0x0C98`/`0x0CA8`; species renderer
+>   traced (but **no name strings in ROM** → names stay community-sourced/low-confidence). Flow
+>   corrections: **the game loops forever (no ending screen)**; `sub_2309` is a palette pulse, not
+>   progression; per-loop difficulty is **fire-gating + roster only, no speed scaling**; and `0x22` is
+>   **200 pts** (corrects `parity-findings.md §4a`).
+> - **Next:** Wave 1b (visual VRAM/CRAM/tile/palette/sprite extraction on the new taps) → Wave 2
+>   (pour the decode into `GameSim`, starting with the velocity model — the residual-parity lever).
+
 ---
 
 ## 0. What "1:1 faithful" means here — the acceptance definition
