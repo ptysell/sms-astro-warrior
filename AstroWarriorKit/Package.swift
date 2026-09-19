@@ -76,6 +76,11 @@ let package = Package(
         // spawn-timeline divergence) off one shared open-loop tape. Re-run after sim changes.
         .executableTarget(name: "ParityScore", dependencies: ["ReferenceEmu", "GameSim"]),
 
+        // Asset-rip harness (DEV/REFERENCE ONLY). Warps into each zone via the 0xC240 tap and
+        // extracts ground-truth palette/tiles/background/metasprites as ©SEGA reference images.
+        // Its OUTPUT (PNG/JSON under /tmp/astro-refrips) is NEVER committed — see Sources/AssetRip/main.swift.
+        .executableTarget(name: "AssetRip", dependencies: ["ReferenceEmu"]),
+
         // Side-by-side parity debugger: ROM (left) vs our sim (right), one input stream.
         .target(
             name: "ParityDebug",
