@@ -15,12 +15,14 @@ public enum Bestiary {
     }
     public static func sharlin() -> Enemy {        // romType 0x18 (24) @0x4A5F — chevron stream grunt, 1-HP, 100pts (ROM-EXACT)
         // Wave-2a MOTION: real flight-script engine (bank6 scripts @0x4B6A → polar LUT @0xA000). Six
-        // spawn at centre (X=128) and, per the fixed schedule, fly path P0/P1/… (GalaxyStreamPaths
-        // sequences them; idx5→P0, idx7→P1) — quarter-arc / loop / serpentine curves at 2–3 px/f.
+        // spawn STACKED at centre (X=128) and release ~interval frames apart (WaveSpawner), each
+        // flying the wave's decoded path P0/P1/… — the path index (+0x13) is stamped per-wave onto
+        // Enemy.flightPathIndex by the spawner (from Wave.pathIndex), so a bare sharlin defaults to
+        // P0 with NO construction-order dependence. Quarter-arc / loop / serpentine curves at 2–3 px/f.
         // Single-hit death; collision tbl @0x1BA8 = 8×8 → r4 (refined from r7).
         Enemy(at: .zero, sprite: SpriteRef("sharlin"), hitbox: .circle(r: 4),
               hp: 1, points: 100,
-              movement: FlightPathMove(pathIndex: GalaxyStreamPaths.nextPath()),
+              movement: FlightPathMove(),
               attack: NoAttack())
     }
     public static func zanix() -> Enemy {          // romType 0x16 (22) @0x48E4 — Zanoni "X" turret grunt, 1-HP, 100pts (ROM-EXACT)

@@ -134,10 +134,18 @@ public struct AimConverge: MovementBehavior {
 }
 
 // zanix (romType 0x16 @0x48E4). Constant 0.5 px/f descent with a horizontal PENDULUM sweep:
-// |vx| ramps down to 0 then back up to 1.5 px/f at accel 0.25 px/f² (0x0040/f), and the ROM's
-// subtract-past-zero flips the X direction bit at each zero crossing — so the enemy sweeps
-// left↔right around its column while descending slowly (net ≈ centred, long-lived).
-// (docs §velocity "zanix": "horizontal sweep oscillating |vx| 0..1.5".)
+// |vx| ramps down to 0 then back up to 1.5 px/f at accel 0.25 px/f² (0x0040/f), FLIPPING the X
+// direction bit at each |vx| zero-crossing — so the enemy sweeps left↔right around its column
+// while descending slowly (net ≈ centred, long-lived, exits the BOTTOM after ~400 f).
+//
+// GROUND-TRUTH NOTE (2026-09, ROMDBG census over idx12–14): the ROM zanix genuinely OSCILLATE —
+// a tracked member sweeps X ≈ 124→130→118→103→92→100→115→129→112→97→92→106… around a stable
+// centre, its X PEAKS at ~227 and NEVER reaches the despawn edge (X≥248), and it descends 0.5 px/f
+// to y≈199 and exits the BOTTOM at ~400 f. So a left↔right flip IS faithful. (A drift-only
+// down+right model was investigated: it makes zanix exit the right edge in ~50–160 f and cannot
+// reproduce the ROM's steady 8-on-field hold across idx12–14 — it is the LESS faithful model.
+// The flip lives in an early zanix state, 0x4925/0x4932, not in the state2/state3 that only pulse
+// |vx|.) This pendulum is kept because it matches the measured ROM, not to inflate the metric.
 public struct ZanixSweep: MovementBehavior {
     public init() {}
     public func step(_ e: Enemy, _ ctx: SimContext) {

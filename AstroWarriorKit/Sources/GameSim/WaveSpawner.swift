@@ -1,8 +1,17 @@
 import Foundation
 
-// Streams a wave's members into the World over time, laid out in formation (§5.8).
-// A WaveCue hands the director a Wave; the director calls World.spawn, which enqueues
-// here. Members then emit `interval` ticks apart (interval 0 = all at once).
+// Streams a wave's members into the World, laid out in formation (§5.8).
+// A WaveCue hands the director a Wave; the director calls World.spawn, which enqueues here.
+//
+// Emission model (matched to the ROM, docs/parity-findings.md §4b/§4c/§4e):
+//   • FLIGHT-SCRIPT STREAM (type 0x18 sharlin — the only true ROM "stream" type; identified here
+//     by carrying a decoded `pathIndex`): the ROM spawns ALL N members AT ONCE, stacked at the
+//     wave's centre X, and staggers each member's MOVEMENT release by record +0x15 = ordinal×interval
+//     (8,16,…). So the field holds all N from the wave's first frame; we emit them together and set
+//     each member's `releaseDelay`. (Previously we staggered EMISSION, which under-populated the
+//     stream region to ~1 early — the real DIVERGENCE driver.)
+//   • every other wave (lines, and the zanix/kyra `.stream` best-fits, which are ROM LINE-type
+//     records) — members emit `interval` ticks apart (interval 0 = all at once), as before.
 final class WaveSpawner {
     private struct Pending {
         let wave: Wave
@@ -18,13 +27,19 @@ final class WaveSpawner {
 
     func reset() { pending.removeAll() }
 
+    // A genuine ROM stream (type 0x18 sharlin): stacked spawn + per-member movement-release stagger.
+    private func isFlightStream(_ w: Wave) -> Bool { w.formation == .stream && w.pathIndex != nil }
+
     func update(_ world: World, _ ctx: SimContext) {
         for i in pending.indices {
             if pending[i].timer > 0 { pending[i].timer -= 1 }
+            // Flight-script stream members all spawn on the same frame (stacked); everything else
+            // keeps the emission stagger (interval 0 = all at once).
+            let emitInterval = isFlightStream(pending[i].wave) ? 0.0 : pending[i].wave.interval
             while pending[i].index < pending[i].wave.count, pending[i].timer <= 0 {
                 emit(pending[i], into: world)
                 pending[i].index += 1
-                pending[i].timer += pending[i].wave.interval
+                pending[i].timer += emitInterval
             }
         }
         pending.removeAll { $0.index >= $0.wave.count }
@@ -35,6 +50,12 @@ final class WaveSpawner {
         let pos = Self.position(p.wave.formation, i: p.index, count: p.wave.count, baseX: p.baseX)
         e.position = pos
         e.anchorX = pos.x
+        if isFlightStream(p.wave) {
+            // ROM +0x15: member ordinal (i, 0-based) → movement-release stagger (i+1)·interval frames.
+            e.releaseDelay = Int((Double(p.index) + 1) * p.wave.interval)
+        }
+        // ROM +0x13: stamp the wave's decoded flight-script index onto every member (sharlin).
+        if let path = p.wave.pathIndex { e.flightPathIndex = path }
         world.add(e)
     }
 

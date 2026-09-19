@@ -112,9 +112,8 @@ struct EnemyMotionTests {
 
     // ── sharlin (0x18): flight-script engine follows the ROM P0 step velocities ─────────────
     @Test func sharlinFollowsFlightScriptP0() {
-        GalaxyStreamPaths.reset()              // first Galaxy stream wave ⇒ path P0
         let w = World()
-        let s = Bestiary.sharlin()
+        let s = Bestiary.sharlin()             // flightPathIndex defaults to 0 ⇒ P0
         s.position = Vec2(128, 200)
 
         s.update(ctx(w))                       // step 0: velLUT[26], mask down+right (0x0A)
@@ -128,13 +127,24 @@ struct EnemyMotionTests {
         #expect(abs(s.stepY - FlightData.velLUT[25].dy) < 1e-9)
 
         // The down-right quarter-arc must eventually exit the RIGHT edge (X ≥ 248).
-        GalaxyStreamPaths.reset()
         let s2 = Bestiary.sharlin()            // fresh P0
         s2.position = Vec2(128, 200)
         var frames = 0
         while !s2.isDead && frames < 300 { s2.update(ctx(w)); frames += 1 }
         #expect(s2.isDead)
         #expect(s2.position.x >= Tuning.despawnXHigh)   // exited via the right edge, not the bottom
+    }
+
+    // ── sharlin flight-path index reads the per-enemy field (no construction-order global) ──
+    @Test func sharlinFlightPathIsPerEnemy() {
+        let w = World()
+        let a = Bestiary.sharlin(); a.flightPathIndex = 1; a.position = Vec2(128, 200)
+        let b = Bestiary.sharlin(); b.flightPathIndex = 6; b.position = Vec2(128, 200)
+        a.update(ctx(w)); b.update(ctx(w))
+        // P1 step0 = mask 0x06 (down+left) vel26; P6 step0 = mask 0x0A (down+right) vel26.
+        #expect(a.dirMask == FlightData.scripts[1][0].mask)
+        #expect(b.dirMask == FlightData.scripts[6][0].mask)
+        #expect(a.dirMask != b.dirMask)        // the two members fly different scripts, deterministically
     }
 
     // ── velocity LUT integrity (ROM bank6 @0xA000) ──────────────────────────────────────────
@@ -148,13 +158,34 @@ struct EnemyMotionTests {
         #expect(abs(FlightData.velLUT[24].dx - 1.4141) < 0.001)
     }
 
-    @Test func galaxyStreamPathSequence() {
-        GalaxyStreamPaths.reset()
-        // First wave (6 members) → P0, second wave → P1 (ROM idx5→P0, idx7→P1).
-        var paths: [Int] = []
-        for _ in 0..<12 { paths.append(GalaxyStreamPaths.nextPath()) }
-        #expect(paths.prefix(6).allSatisfy { $0 == 0 })
-        #expect(paths.suffix(6).allSatisfy { $0 == 1 })
-        GalaxyStreamPaths.reset()
+    // ── Flight-path identity is STABLE per-wave, not construction-order-dependent ────────────
+    // Regression for the old process-global counter in GalaxyStreamPaths (removed): building the
+    // Galaxy level and, separately, constructing loose sharlins must NOT perturb the assignment.
+    @Test func galaxyStreamPathsArePerWaveDeterministic() {
+        // Pollute any hypothetical global by constructing sharlins first and out of order.
+        for _ in 0..<5 { _ = Bestiary.sharlin() }
+        // Every sharlin (flight-script) stream wave carries the ROM idx→path map on Wave.pathIndex,
+        // in schedule order: idx5→P0, idx7→P1, 16→P6, 19→P3, 24→P7, 27→P2, 44→P4, 47→P2, 49→P3, 51→P3.
+        let streamPaths = DefaultContent.galaxy().waves.compactMap { $0.wave.pathIndex }
+        #expect(streamPaths == GalaxyStreamPaths.sequence)
+        #expect(streamPaths == [0, 1, 6, 3, 7, 2, 4, 2, 3, 3])
+    }
+
+    // ── Stacked spawn + staggered movement release for a flight-script stream wave ───────────
+    @Test func streamWaveSpawnsStackedWithStaggeredRelease() {
+        let w = World()
+        w.step(Intent(fire: true))             // title → playing so the spawner runs
+        // A 6-member sharlin stream (P3), interval 8 — the ROM idx19 shape.
+        let wave = Wave(make: Bestiary.sharlin, formation: .stream, count: 6,
+                        interval: 8, baseX: 128, pathIndex: 3)
+        w.spawn(wave)
+        w.step(Intent())                       // spawner tick emits the members (all at once)
+        let members = w.entities.compactMap { $0 as? Enemy }
+        // All 6 exist AT ONCE (stacked), not staggered in emission.
+        #expect(members.count == 6)
+        // Each got the wave's path (P3), regardless of construction order.
+        #expect(members.allSatisfy { $0.flightPathIndex == 3 })
+        // Movement release is staggered by ROM +0x15 = ordinal×interval → 8,16,24,32,40,48.
+        #expect(Set(members.map { $0.releaseDelay }) == Set([8, 16, 24, 32, 40, 48]))
     }
 }

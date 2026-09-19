@@ -33,8 +33,8 @@ public enum DefaultContent {
         //   Empty rests (idx6,15,33,35,61) omitted. .stream = staggered column; .line ≈ 32px row on baseX.
         let waves: [WaveCue] = [
             // atScroll  species        formation  count  interval  baseX   ── ROM idx / type ──
-            cue( 179, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx5 0x18 x6
-            cue( 350, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx7 0x18 x6
+            cue( 179, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[0]),  // idx5 0x18 x6 → P0
+            cue( 350, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[1]),  // idx7 0x18 x6 → P1
             cue( 478, Bestiary.cult,     .line,   4, 0,  64),  // idx8 0x15 x4
             cue( 606, Bestiary.cult,     .line,   4, 0, 192),  // idx9 0x15 x4
             cue( 734, Bestiary.cult,     .line,   4, 0, 128),  // idx10 0x15 x4
@@ -42,18 +42,18 @@ public enum DefaultContent {
             cue( 990, Bestiary.zanix,    .line,   4, 0, 128),  // idx12 0x16 x4
             cue(1118, Bestiary.zanix,    .stream, 4, 8, 208),  // idx13 0x16 x4
             cue(1246, Bestiary.zanix,    .stream, 4, 8,  48),  // idx14 0x16 x4
-            cue(1502, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx16 0x18 x6
+            cue(1502, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[2]),  // idx16 0x18 x6 → P6
             cue(1630, Bestiary.cult,     .line,   4, 0, 128),  // idx17 0x15 x4
             cue(1758, Bestiary.cult,     .line,   4, 0, 128),  // idx18 0x15 x4
-            cue(1886, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx19 0x18 x6
+            cue(1886, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[3]),  // idx19 0x18 x6 → P3
             cue(2014, Bestiary.gyron,    .line,   4, 0, 128),  // idx20 0x27 x4
             cue(2142, Bestiary.gyron,    .line,   4, 0, 128),  // idx21 0x27 x4
             cue(2270, Bestiary.gyron,    .line,   4, 0, 128),  // idx22 0x27 x4
             cue(2398, Bestiary.gyron,    .line,   4, 0, 128),  // idx23 0x27 x4
-            cue(2526, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx24 0x18 x6
+            cue(2526, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[4]),  // idx24 0x18 x6 → P7
             cue(2654, Bestiary.cult,     .line,   4, 0, 128),  // idx25 0x15 x4
             cue(2782, Bestiary.cult,     .line,   4, 0, 128),  // idx26 0x15 x4
-            cue(2910, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx27 0x18 x6
+            cue(2910, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[5]),  // idx27 0x18 x6 → P2
             cue(3038, Bestiary.kyra,     .stream, 4, 8,  48),  // idx28 0x22 x4
             cue(3166, Bestiary.kyra,     .stream, 4, 8, 208),  // idx29 0x22 x4
             cue(3294, Bestiary.kyra,     .stream, 4, 8,  64),  // idx30 0x22 x4
@@ -68,14 +68,14 @@ public enum DefaultContent {
             cue(4702, Bestiary.gyron,    .line,   4, 0, 128),  // idx41 0x27 x4
             cue(4830, Bestiary.gyron,    .line,   4, 0, 128),  // idx42 0x27 x4
             cue(4958, Bestiary.gyron,    .line,   4, 0, 128),  // idx43 0x27 x4
-            cue(5086, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx44 0x18 x6
+            cue(5086, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[6]),  // idx44 0x18 x6 → P4
             cue(5214, Bestiary.cult,     .line,   8, 0, 128),  // idx45 0x15 x8
             cue(5342, Bestiary.cult,     .line,   8, 0, 128),  // idx46 0x15 x8
-            cue(5470, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx47 0x18 x6
+            cue(5470, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[7]),  // idx47 0x18 x6 → P2
             cue(5598, Bestiary.cult,     .line,   8, 0, 128),  // idx48 0x15 x8
-            cue(5726, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx49 0x18 x6
+            cue(5726, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[8]),  // idx49 0x18 x6 → P3
             cue(5854, Bestiary.cult,     .line,   8, 0, 128),  // idx50 0x15 x8
-            cue(5982, Bestiary.sharlin,  .stream, 6, 8, 128),  // idx51 0x18 x6
+            cue(5982, Bestiary.sharlin,  .stream, 6, 8, 128, path: GalaxyStreamPaths.sequence[9]),  // idx51 0x18 x6 → P3
             cue(6110, Bestiary.kyra,     .line,   4, 0,  80),  // idx52 0x22 x4
             cue(6238, Bestiary.kyra,     .line,   4, 0, 176),  // idx53 0x22 x4
             cue(6366, Bestiary.kyra,     .stream, 4, 8, 160),  // idx54 0x22 x4
@@ -96,10 +96,10 @@ public enum DefaultContent {
 
     private static func cue(_ at: Double, _ make: @escaping () -> Enemy,
                             _ formation: Formation, _ count: Int, _ interval: Double,
-                            _ baseX: Double? = nil) -> WaveCue {
+                            _ baseX: Double? = nil, path: Int? = nil) -> WaveCue {
         WaveCue(atScroll: at,
                 wave: Wave(make: make, formation: formation, count: count,
-                           interval: interval, baseX: baseX))
+                           interval: interval, baseX: baseX, pathIndex: path))
     }
 
     static func asteroid() -> Level {

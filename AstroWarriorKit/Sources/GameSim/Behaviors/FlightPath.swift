@@ -88,34 +88,24 @@ public enum FlightData {
 }
 
 // Per-wave flight-path assignment for Galaxy streams (type 0x18), decoded from the variant-0
-// wave table: idx5→P0, 7→P1, 16→P6, 19→P3, 24→P7, 27→P2, 44→P4, 47→P2, 49→P3, 51→P3.
-// The Bestiary factory has no wave index (DefaultContent is fixed), so this sequences the paths
-// across the fixed schedule: every Galaxy sharlin wave is exactly 6 members, so member N picks
-// path sequence[N/6]. Deterministic for the single-World scoring/gameplay run; reset() lets a
-// test re-seed it. (docs §flightpath "Galaxy wave → path-index map".)
+// wave table (record +0x13): idx5→P0, 7→P1, 16→P6, 19→P3, 24→P7, 27→P2, 44→P4, 47→P2, 49→P3,
+// 51→P3 — the ordered list of the 10 sharlin stream waves. This is a STABLE per-wave identity:
+// DefaultContent stamps `sequence[k]` onto the k-th sharlin wave's `Wave.pathIndex`, and the
+// spawner copies it to each member's `flightPathIndex`. No process-global construction-order
+// counter (that made path selection order-dependent → an order-dependent test failure).
 public enum GalaxyStreamPaths {
     public static let sequence = [0, 1, 6, 3, 7, 2, 4, 2, 3, 3]
     public static let membersPerWave = 6
-    // The sim runs in a single isolation domain (see Entity.swift); this per-process sequencer
-    // is only touched from the game loop, so nonisolated(unsafe) is the faithful, cheap choice.
-    nonisolated(unsafe) private static var callCount = 0
-
-    public static func nextPath() -> Int {
-        let wave = callCount / membersPerWave
-        callCount += 1
-        return sequence[min(wave, sequence.count - 1)]
-    }
-    public static func reset() { callCount = 0 }
 }
 
-// Flight-script mover: plays the given script step-by-step, holding each step's velocity for
-// its duration, then holding the terminal velocity until the shared Integrator despawns it.
+// Flight-script mover: plays the enemy's assigned script (Enemy.flightPathIndex, stamped from the
+// wave record) step-by-step, holding each step's velocity for its duration, then holding the
+// terminal velocity until the shared Integrator despawns it.
 public struct FlightPathMove: MovementBehavior {
-    public let pathIndex: Int
-    public init(pathIndex: Int) { self.pathIndex = pathIndex }
+    public init() {}
 
     public func step(_ e: Enemy, _ ctx: SimContext) {
-        let script = FlightData.scripts[pathIndex]
+        let script = FlightData.scripts[e.flightPathIndex]
         guard !script.isEmpty else { return }
         if !e.motionInited {
             e.motionInited = true

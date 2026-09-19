@@ -7,14 +7,23 @@ public struct Wave {
     public let make: () -> Enemy                    // a Bestiary entry
     public let formation: Formation
     public let count: Int
-    public let interval: Double                     // stagger between members (ticks)
+    /// For a `.stream` wave this is the ROM per-member MOVEMENT-release step (record +0x15 =
+    /// ordinal×interval): every member SPAWNS at once (stacked), and member i's motion is held
+    /// `(i+1)·interval` frames before release. For non-stream waves it is the legacy emission
+    /// stagger (0 = all at once). See WaveSpawner + docs/parity-findings.md §4b/§4c.
+    public let interval: Double
     /// Scripted horizontal anchor (screen-x) for the formation. The real ROM places each
     /// wave at a fixed x (MEASURED), not randomly; nil falls back to RNG for placeholder content.
     public let baseX: Double?
+    /// Decoded per-wave flight-script index (record +0x13) for Galaxy `sharlin` (type 0x18)
+    /// stream waves — a STABLE per-wave identity from the variant-0 wave table (idx5→P0, idx7→P1,
+    /// …). The spawner stamps it onto every member's `flightPathIndex`, so path selection no longer
+    /// depends on enemy construction order. nil for every non-flight-script wave.
+    public let pathIndex: Int?
     public init(make: @escaping () -> Enemy, formation: Formation, count: Int,
-                interval: Double, baseX: Double? = nil) {
+                interval: Double, baseX: Double? = nil, pathIndex: Int? = nil) {
         self.make = make; self.formation = formation; self.count = count
-        self.interval = interval; self.baseX = baseX
+        self.interval = interval; self.baseX = baseX; self.pathIndex = pathIndex
     }
 }
 

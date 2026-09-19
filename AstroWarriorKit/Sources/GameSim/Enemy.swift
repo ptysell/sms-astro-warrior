@@ -28,6 +28,13 @@ public final class Enemy: Entity, Damageable, Faction {
     public var motionInited = false
     public var flightIndex: Int = 0                // current step in a flight script
     public var flightHold: Int = 0                 // frames left on the current flight step
+    // Stream MOVEMENT-release stagger (ROM record +0x15): a stream member exists (and is counted)
+    // from the wave's spawn frame but holds its motion for `releaseDelay` frames — the ROM spawns
+    // all N members stacked at once and releases them ~interval frames apart. 0 = move immediately.
+    public var releaseDelay: Int = 0
+    // Flight-script index (ROM record +0x13) for type-0x18 sharlin — set per-wave by the spawner
+    // from Wave.pathIndex; FlightPathMove reads it. Default 0 (P0) for a bare-constructed sharlin.
+    public var flightPathIndex: Int = 0
 
     public init(at p: Vec2, sprite: SpriteRef, hitbox: Hitbox,
                 hp: Int, points: Int,
@@ -42,6 +49,9 @@ public final class Enemy: Entity, Damageable, Faction {
 
     public override func update(_ ctx: SimContext) {
         age += 1
+        // Stream stagger (ROM +0x15): member stays stacked at its spawn point until its release
+        // frame, then its handler/integrator run normally. The entity is alive & counted meanwhile.
+        if age <= releaseDelay { return }
         movement.step(self, ctx)      // handler: set stepX/stepY/dirMask (ROM model) or move directly (legacy)
         Integrator.apply(to: self)    // shared 0x0416 pass: apply magnitude×direction + off-screen despawn
         attack.step(self, ctx)
@@ -49,6 +59,11 @@ public final class Enemy: Entity, Damageable, Faction {
 
     public func takeDamage(_ amount: Int, _ ctx: SimContext) {
         guard !indestructible else { return }
+        // Not yet vulnerable while still entering from ABOVE the top edge (screen-Y ≤ 0, i.e.
+        // logical y ≥ LOGICAL_HEIGHT). The ROM cannot destroy a wave's members before they cross
+        // onto the field — critical for the stacked stream (6 sharlin sit at the centre-top column
+        // and would otherwise be mown by the player's straight-up fire, which the ROM never allows).
+        guard position.y < LOGICAL_HEIGHT else { return }
         hp -= amount
         if hp <= 0 {
             ctx.world.addScore(points)
