@@ -18,9 +18,31 @@ import GameSim
 // This is a Track-B probe primitive (motion capture + divergence metric). Re-run it after
 // any sim change; the headline DIVERGENCE number should go down. Deterministic.
 //
-//   cd AstroWarriorKit && swift run ParityScore
-//   ASTRO_FRAMES=3000 swift run ParityScore     # longer window
-//   ASTRO_ROM=/path/to.sms swift run ParityScore # explicit ROM
+//   cd AstroWarriorKit && swift run ParityScore                 # Galaxy (default, unchanged)
+//   swift run ParityScore galaxy|asteroid|nebula                # score one zone
+//   swift run ParityScore all                                   # score all three
+//   swift run ParityScore census [galaxy|asteroid|nebula] [f]   # ROM schedule census per zone
+//   ASTRO_FRAMES=3000 swift run ParityScore                     # longer window
+//   ASTRO_ROM=/path/to.sms swift run ParityScore                # explicit ROM
+//
+// ── STAGE-WARP (Wave 3a) ────────────────────────────────────────────────────────────────
+// Galaxy is playable from the ship's spawn, but the dodge bot never survives long enough to
+// reach Asteroid/Nebula naturally, so those zones (wired into GameSim in Wave 2) were never
+// measured. We WARP both cores into the same zone so the SAME tape scores that zone on both:
+//   • ROM side: after the normal boot, HOLD core.writeRAM(0xC240, variant) BEFORE every step
+//     for the whole run. 0xC240 mod 3 selects the wave-table variant (root 0x3FA3: 0=Galaxy,
+//     1=Asteroid, 2=Nebula); the tile loader @0x07E3 keys off it at new-life and the spawner
+//     RE-READS it every frame — so it must be poked every frame. Values <3 also keep enemy
+//     fire GATED OFF, which is exactly the faithful first-loop behavior (a real playthrough
+//     plays Asteroid at 0xC240=1, Nebula at 0xC240=2). ROM-EXACT / measured.
+//   • SIM side: World.setZone(variant) before play begins (additive; Galaxy/zone 0 unchanged).
+
+// ─────────────────────────────────────────── zone selection ──────────────────────────────
+enum Zone: String, CaseIterable {
+    case galaxy, asteroid, nebula
+    var variant: UInt8 { switch self { case .galaxy: return 0; case .asteroid: return 1; case .nebula: return 2 } }
+    var simIndex: Int { Int(variant) }
+}
 
 // ─────────────────────────────────────────── ROM discovery ───────────────────────────────
 func findROM() -> String? {
@@ -47,15 +69,18 @@ guard core.load(rom: data) else { fputs("ParityScore: ROM load failed\n", stderr
 
 let slots0 = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
 func isFX0(_ t: Int) -> Bool { t == 11 || t == 12 || t == 19 }
-func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX0(t) }
+func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && t != 0x14 && !isFX0(t) }
 
-// ── CENSUS MODE (`swift run ParityScore census [frames]`) ──────────────────────────────────
-// Dumps the ROM's REAL Galaxy schedule, keyed by wave-index (0xC211): for each index, the
+// ── CENSUS MODE (`swift run ParityScore census [zone] [frames]`) ────────────────────────────
+// Dumps the ROM's REAL schedule for a zone, keyed by wave-index (0xC211): for each index, the
 // enemy romType(s), member count, and each member's spawn X. This is GROUND TRUTH for building
-// the Galaxy WaveCue array — measured, not decoded. Runs the dodge bot so the field advances.
-@MainActor func census(frames: Int) {
+// the per-zone WaveCue array — measured, not decoded. Runs the dodge bot so the field advances,
+// while HOLDING the stage-warp poke (0xC240=variant) so a non-Galaxy zone is actually observed.
+@MainActor func census(zone: Zone, frames: Int) {
+    let variant = zone.variant
     func ram(_ a: Int) -> Int { Int(core.readRAM(a)) }
     func word(_ a: Int) -> Double { Double(ram(a) | (ram(a + 1) << 8)) / 256.0 }
+    func warpedStep(_ b: RefButtons) { core.writeRAM(0xC240, variant); core.step(buttons: b, pause: false) }
     func dodgeC() -> RefButtons {
         let px = word(0xC60A), py = word(0xC608)
         guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated → neutral input
@@ -75,7 +100,7 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
     for _ in 0..<8   { core.step(buttons: [], pause: false) }
     var gspin = 0
-    while word(0xC60A) < 1 && gspin < 120 { core.step(buttons: [], pause: false); gspin += 1 }  // player populated
+    while word(0xC60A) < 1 && gspin < 120 { warpedStep([]); gspin += 1 }  // player populated (warp held)
 
     final class Spawn { let idx: Int; let frame: Int; let type: Int; var x: Int
         init(idx: Int, frame: Int, type: Int) { self.idx = idx; self.frame = frame; self.type = type; x = -1 } }
@@ -85,7 +110,7 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     var pending: [(slot: Int, at: Int, spawn: Spawn)] = []   // read X a few frames after spawn (pos settles)
     var prevIdx = -1, maxIdx = 0
     for f in 0..<frames {
-        core.step(buttons: dodgeC(), pause: false)
+        warpedStep(dodgeC())
         let idx = ram(0xC211)
         maxIdx = max(maxIdx, idx)
         if idx == 0 && maxIdx > 3 { break }              // game-over reset → stop the census
@@ -104,7 +129,7 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     }
     // Aggregate by wave-index, then by type.
     let byIdx = Dictionary(grouping: spawns, by: { $0.idx })
-    print("=== ROM GALAXY SCHEDULE (measured, dodge bot, \(frames)f) ===")
+    print("=== ROM \(zone.rawValue.uppercased()) SCHEDULE (measured, dodge bot, warp 0xC240=\(variant), \(frames)f) ===")
     print("idx  onset  spawn  type×n  member-X (spawn order)")
     for idx in byIdx.keys.sorted() {
         let evs = byIdx[idx]!.sorted { $0.frame < $1.frame }
@@ -122,9 +147,16 @@ func isEnemy0(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX
     print("last idx reached: \(byIdx.keys.max() ?? -1)   total spawns: \(spawns.count)")
 }
 
-if CommandLine.arguments.contains("census") {
-    let fr = CommandLine.arguments.compactMap { Int($0) }.first ?? 9000
-    census(frames: fr)
+// ── ARG PARSING ─────────────────────────────────────────────────────────────────────────
+// Backward compatible: `census` alone (or `census 9000`) is Galaxy; `census asteroid 9000` warps.
+// A bare zone name (`galaxy`/`asteroid`/`nebula`) or `all` selects the score-mode zone(s).
+let args = CommandLine.arguments.dropFirst()
+func parseZone(_ ss: ArraySlice<String>) -> Zone? { ss.compactMap { Zone(rawValue: $0.lowercased()) }.first }
+
+if args.contains("census") {
+    let z = parseZone(args) ?? .galaxy
+    let fr = args.compactMap { Int($0) }.first ?? 9000
+    census(zone: z, frames: fr)
     exit(0)
 }
 
@@ -135,7 +167,13 @@ let slots = Array(stride(from: 0xC600, to: 0xD000, by: 0x40))
 @MainActor func romPlayerAlive() -> Bool { ram(0xC600) == 1 }
 @MainActor func romWaveIdx() -> Int { ram(0xC211) }
 func isFX(_ t: Int) -> Bool { t == 11 || t == 12 || t == 19 }
-func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(t) }
+// Enemy PROJECTILES (type 0x14, the aimed bullet @0x18EE) are not population — the sim tracks its
+// enemy fire as Bullet, not Enemy, so counting the ROM's 0x14 as an "enemy" is an apples-to-oranges
+// inflation (it appears in later-loop / ungated-fire zones like Nebula). Exclude it.
+func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && t != 0x14 && !isFX(t) }
+// The survival bot should DODGE enemy fire too, so its threat set is the population enemies PLUS
+// the enemy bullet (0x14). (Population counting and threat-avoidance want opposite things about 0x14.)
+func isThreat(_ t: Int) -> Bool { isEnemy(t) || t == 0x14 }
 
 // The ROM's own survival bot (kept in sync with ParityProbe's dodge()). Closed-loop on the
 // ROM only — we RECORD the buttons it presses so we can replay them open-loop into the sim.
@@ -144,7 +182,7 @@ func isEnemy(_ t: Int) -> Bool { t != 0 && t != 1 && t != 2 && t != 18 && !isFX(
     guard px > 1 || py > 1 else { return [.fire] }   // entity not yet populated (0,0) → neutral, no phantom down+right
     var threatX: Double? = nil, best = 1e9
     for s in slots {
-        let t = ram(s); if !isEnemy(t) { continue }
+        let t = ram(s); if !isThreat(t) { continue }
         let ex = word(s + 0x0A), ey = word(s + 0x08), dy = py - ey
         if dy > -24, dy < 90 { let d = abs(ex - px) + dy * 0.25; if d < best { best = d; threatX = ex } }
     }
@@ -164,42 +202,42 @@ struct Frame {                       // one aligned frame of ground-truth ROM st
     let enemyTypes: [Int]            // types present this frame (for the timeline)
 }
 
-// Cumulative-spawn totals — input-INDEPENDENT (a spawn happens regardless of who kills what), so
-// they isolate SCHEDULE fidelity from the combat/kill confound in the live-population metric.
-var romSpawnTotal = 0
-var simSpawnTotal = 0
-
-@MainActor func captureROM() -> (tape: [RefButtons], frames: [Frame]) {
+@MainActor func captureROM(variant: UInt8) -> (tape: [RefButtons], frames: [Frame], spawnTotal: Int) {
     core.reset()
     // Boot: title → gameplay (same sequence ParityProbe uses).
     for _ in 0..<300 { core.step(buttons: [], pause: false) }
     for _ in 0..<5   { core.step(buttons: [.fire], pause: false) }
     for _ in 0..<8   { core.step(buttons: [], pause: false) }
+    // STAGE-WARP: from here on, HOLD 0xC240=variant BEFORE every step (the spawner re-reads it each
+    // frame; the tile loader keyed off it at new-life). variant 0 (Galaxy) is a no-op poke, so the
+    // Galaxy result is unchanged. warpedStep is the ONLY stepper used past boot.
+    func warpedStep(_ b: RefButtons) { core.writeRAM(0xC240, variant); core.step(buttons: b, pause: false) }
     // Spin until the player entity's position words are populated (they read (0,0) for ~9 frames
     // after gameplay starts). This aligns tape-frame-0 with the ship's real (128,144) spawn — without
     // it the dodge bot records phantom down+right against a (0,0) reading and the sim (live from frame 0)
     // obeys it, injecting a constant ~9.5px offset AND a ~9-frame spawn-timeline lead. (Verified: ROM entity
     // XY IS the 16x16 sprite centre — VDP draw @0x0416/frame-list 0x129A — so there is NO coordinate bias.)
     var guardSpin = 0
-    while romPlayer().x < 1 && guardSpin < 120 { core.step(buttons: [], pause: false); guardSpin += 1 }
+    while romPlayer().x < 1 && guardSpin < 120 { warpedStep([]); guardSpin += 1 }
     var tape: [RefButtons] = [], frames: [Frame] = []
     var lastType = [Int](repeating: 0, count: slots.count)   // for cumulative-spawn counting
+    var spawnTotal = 0
     for _ in 0..<N {
         let b = dodge()
         tape.append(b)
-        core.step(buttons: b, pause: false)
+        warpedStep(b)
         var count = 0, types: [Int] = []
         for (i, s) in slots.enumerated() {
             let t = ram(s)
             if isEnemy(t) { count += 1; types.append(t) }
-            if isEnemy(t) && !isEnemy(lastType[i]) { romSpawnTotal += 1 }   // 0→enemy transition = one spawn
+            if isEnemy(t) && !isEnemy(lastType[i]) { spawnTotal += 1 }   // 0→enemy transition = one spawn
             lastType[i] = t
         }
         let p = romPlayer()
         frames.append(Frame(px: p.x, py: p.y, alive: romPlayerAlive(),
                             waveIdx: romWaveIdx(), enemyCount: count, enemyTypes: types))
     }
-    return (tape, frames)
+    return (tape, frames, spawnTotal)
 }
 
 // ─────────────────────────────────────────── SIM (our port) ──────────────────────────────
@@ -212,100 +250,125 @@ func intent(from b: RefButtons) -> Intent {
 
 struct SimFrame { let px, py: Double; let alive: Bool; let scrollY: Double; let enemyCount: Int }
 
-@MainActor func runSim(tape: [RefButtons]) -> [SimFrame] {
+@MainActor func runSim(tape: [RefButtons], zone: Zone) -> (frames: [SimFrame], spawnTotal: Int) {
     let world = World()
+    world.setZone(zone.simIndex)             // STAGE-WARP: additive; zone 0 (Galaxy) is a no-op.
     world.step(Intent(fire: true))          // flip title → playing (analog of the ROM boot)
     var out: [SimFrame] = []
     var seen = Set<ObjectIdentifier>()      // exact cumulative spawns; retain in `held` so a reaped
     var held: [Enemy] = []                  // Enemy's address can't be reused (which would collide the id)
+    var spawnTotal = 0
     for b in tape {
         world.step(intent(from: b))
         let enemies = world.entities.compactMap { $0 as? Enemy }
-        for e in enemies where seen.insert(ObjectIdentifier(e)).inserted { simSpawnTotal += 1; held.append(e) }
+        for e in enemies where seen.insert(ObjectIdentifier(e)).inserted { spawnTotal += 1; held.append(e) }
         // sim logical → screen px (y down), matching the ROM's coordinate frame
         out.append(SimFrame(px: world.player.position.x,
                             py: LOGICAL_HEIGHT - world.player.position.y,
                             alive: !world.player.isDead && world.mode != .gameOver,
                             scrollY: world.scrollY, enemyCount: enemies.count))
     }
-    return out
+    return (out, spawnTotal)
 }
 
-// ─────────────────────────────────────────── run + score ─────────────────────────────────
-let (tape, rom) = captureROM()
-let sim = runSim(tape: tape)
-let n = min(rom.count, sim.count)
-// Skip boot transients: the ROM player entity's position words are 0 for the first frames
-// after gameplay starts (entity not yet populated). WARMUP is excluded from every metric.
-let WARMUP = min(60, n)
-
-// —— Player-position error (only while BOTH ships alive AND the ROM player is on-field) ——
-var perr: [Double] = []
-for f in WARMUP..<n where rom[f].alive && sim[f].alive && rom[f].px > 1 {
-    let dx = rom[f].px - sim[f].px, dy = rom[f].py - sim[f].py
-    perr.append((dx * dx + dy * dy).squareRoot())
-}
-let meanPErr = perr.isEmpty ? Double.nan : perr.reduce(0, +) / Double(perr.count)
-let maxPErr  = perr.max() ?? .nan
-let firstRomDeath = rom.firstIndex { !$0.alive } ?? n
-let firstSimDeath = sim.firstIndex { !$0.alive } ?? n
-
-// —— Enemy population (measured over [WARMUP, n); timeline below uses absolute frames) ——
-let romCounts = rom.prefix(n).map { $0.enemyCount }
-let simCounts = sim.prefix(n).map { $0.enemyCount }
-let measured = max(1, n - WARMUP)
-let romMean = Double(romCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
-let simMean = Double(simCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
-let romPeak = romCounts.max() ?? 0, simPeak = simCounts.max() ?? 0
-var countDiffSum = 0, framesSimEmptyRomNot = 0
-for f in WARMUP..<n {
-    countDiffSum += abs(romCounts[f] - simCounts[f])
-    if simCounts[f] == 0 && romCounts[f] > 0 { framesSimEmptyRomNot += 1 }
-}
-let meanCountDiff = Double(countDiffSum) / Double(measured)
-
-// —— Spawn timeline: first frame each side reaches k enemies on the field ——
-func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k } }
-
+// ─────────────────────────────────────────── run + score one zone ────────────────────────
 func fmt(_ d: Double) -> String { d.isNaN ? "  n/a" : String(format: "%6.1f", d) }
 func f0(_ i: Int) -> String { String(format: "%4d", i) }
+func firstReach(_ counts: [Int], _ k: Int) -> Int? { counts.firstIndex { $0 >= k } }
 
-print("""
-╔══════════════════════════════════════════════════════════════════════╗
-║  ParityScore — Galaxy stage, \(f0(n))-frame window (~\(n/60)s)          ║
-║  ROM ground truth (dodge tape)  vs  GameSim.World (same tape)          ║
-╚══════════════════════════════════════════════════════════════════════╝
+@MainActor func scoreZone(_ zone: Zone) -> Double {
+    let (tape, rom, romSpawnTotal) = captureROM(variant: zone.variant)
+    let (sim, simSpawnTotal) = runSim(tape: tape, zone: zone)
+    let n = min(rom.count, sim.count)
+    // Skip boot transients: the ROM player entity's position words are 0 for the first frames
+    // after gameplay starts (entity not yet populated). WARMUP is excluded from every metric.
+    let WARMUP = min(60, n)
 
-PLAYER POSITION  (screen px, measured only while both ships alive)
-    frames both-alive : \(f0(perr.count)) / \(f0(measured))  (after \(WARMUP)-frame warmup)
-    mean error        : \(fmt(meanPErr)) px
-    max  error        : \(fmt(maxPErr)) px
-    first death       : ROM @\(f0(firstRomDeath))   SIM @\(f0(firstSimDeath))
-    pos @f\(WARMUP)        : ROM (\(fmt(rom[WARMUP].px)),\(fmt(rom[WARMUP].py)))  SIM (\(fmt(sim[WARMUP].px)),\(fmt(sim[WARMUP].py)))
+    // —— Player-position error (only while BOTH ships alive AND the ROM player is on-field) ——
+    var perr: [Double] = []
+    for f in WARMUP..<n where rom[f].alive && sim[f].alive && rom[f].px > 1 {
+        let dx = rom[f].px - sim[f].px, dy = rom[f].py - sim[f].py
+        perr.append((dx * dx + dy * dy).squareRoot())
+    }
+    let meanPErr = perr.isEmpty ? Double.nan : perr.reduce(0, +) / Double(perr.count)
+    let maxPErr  = perr.max() ?? .nan
+    let firstRomDeath = rom.firstIndex { !$0.alive } ?? n
+    let firstSimDeath = sim.firstIndex { !$0.alive } ?? n
 
-ENEMY POPULATION  (active enemies on field, per frame)
-    mean count        : ROM \(fmt(romMean))   SIM \(fmt(simMean))
-    peak count        : ROM \(f0(romPeak))     SIM \(f0(simPeak))
-    mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame
-    frames sim-empty  : \(f0(framesSimEmptyRomNot)) / \(f0(measured))  (ROM had enemies, sim had none)
-    cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← input-independent → pure SCHEDULE fidelity
+    // —— Enemy population (measured over [WARMUP, n); timeline below uses absolute frames) ——
+    let romCounts = rom.prefix(n).map { $0.enemyCount }
+    let simCounts = sim.prefix(n).map { $0.enemyCount }
+    let measured = max(1, n - WARMUP)
+    let romMean = Double(romCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
+    let simMean = Double(simCounts[WARMUP..<n].reduce(0, +)) / Double(measured)
+    let romPeak = romCounts.max() ?? 0, simPeak = simCounts.max() ?? 0
+    // The count term is gated on BOTH ships alive — same window as the player-error term — so
+    // post-death desync (each core dies at a different frame, then clears its field) can't dominate.
+    // Galaxy is death-free (both-alive == whole window) so its number is unchanged; the warped zones,
+    // where the bot dies early, are now measured over their clean pre-death window. (sim-empty is still
+    // reported over the whole window as an informational signal.)
+    var countDiffSum = 0, framesSimEmptyRomNot = 0, bothAlive = 0
+    for f in WARMUP..<n {
+        if simCounts[f] == 0 && romCounts[f] > 0 { framesSimEmptyRomNot += 1 }
+        guard rom[f].alive && sim[f].alive else { continue }
+        bothAlive += 1
+        countDiffSum += abs(romCounts[f] - simCounts[f])
+    }
+    let meanCountDiff = Double(countDiffSum) / Double(max(1, bothAlive))
 
-SPAWN TIMELINE  (first frame the field holds ≥k enemies)
-        k :   1    2    3    4    6    8
-    ROM   : \((1...8).filter{[1,2,3,4,6,8].contains($0)}.map{ k in firstReach(romCounts,k).map(f0) ?? "  — " }.joined(separator: " "))
-    SIM   : \((1...8).filter{[1,2,3,4,6,8].contains($0)}.map{ k in firstReach(simCounts,k).map(f0) ?? "  — " }.joined(separator: " "))
-""")
+    print("""
+    ╔══════════════════════════════════════════════════════════════════════╗
+    ║  ParityScore — \(zone.rawValue.uppercased()) stage, \(f0(n))-frame window (~\(n/60)s)          ║
+    ║  ROM ground truth (dodge tape)  vs  GameSim.World (same tape)          ║
+    ║  stage-warp: ROM 0xC240=\(zone.variant)   SIM World.setZone(\(zone.simIndex))                       ║
+    ╚══════════════════════════════════════════════════════════════════════╝
 
-// —— Population shape, sampled every ~N/24 frames (ROM vs SIM side by side) ——
-let step = max(1, n / 24)
-print("\nPOPULATION OVER TIME  (every \(step) frames)   ROM │ SIM   waveIdx")
-for f in stride(from: 0, to: n, by: step) {
-    let r = romCounts[f], s = simCounts[f]
-    let bar = { (c: Int) in String(repeating: "█", count: min(c, 20)) }
-    print(String(format: "  f%4d  %2d │ %2d  idx%2d  %@ · %@",
-                 f, r, s, rom[f].waveIdx, bar(r), bar(s)))
+    PLAYER POSITION  (screen px, measured only while both ships alive)
+        frames both-alive : \(f0(perr.count)) / \(f0(measured))  (after \(WARMUP)-frame warmup)
+        mean error        : \(fmt(meanPErr)) px
+        max  error        : \(fmt(maxPErr)) px
+        first death       : ROM @\(f0(firstRomDeath))   SIM @\(f0(firstSimDeath))
+        pos @f\(WARMUP)        : ROM (\(fmt(rom[WARMUP].px)),\(fmt(rom[WARMUP].py)))  SIM (\(fmt(sim[WARMUP].px)),\(fmt(sim[WARMUP].py)))
+
+    ENEMY POPULATION  (active enemies on field, per frame)
+        mean count        : ROM \(fmt(romMean))   SIM \(fmt(simMean))
+        peak count        : ROM \(f0(romPeak))     SIM \(f0(simPeak))
+        mean |Δcount|     : \(fmt(meanCountDiff))  enemies/frame  (over \(f0(bothAlive)) both-alive frames)
+        frames sim-empty  : \(f0(framesSimEmptyRomNot)) / \(f0(measured))  (ROM had enemies, sim had none)
+        cumulative spawns : ROM \(f0(romSpawnTotal))   SIM \(f0(simSpawnTotal))  ← input-independent → pure SCHEDULE fidelity
+
+    SPAWN TIMELINE  (first frame the field holds ≥k enemies)
+            k :   1    2    3    4    6    8
+        ROM   : \([1,2,3,4,6,8].map { k in firstReach(romCounts,k).map(f0) ?? "  — " }.joined(separator: " "))
+        SIM   : \([1,2,3,4,6,8].map { k in firstReach(simCounts,k).map(f0) ?? "  — " }.joined(separator: " "))
+    """)
+
+    // —— Population shape, sampled every ~N/24 frames (ROM vs SIM side by side) ——
+    let step = max(1, n / 24)
+    print("\nPOPULATION OVER TIME  (every \(step) frames)   ROM │ SIM   waveIdx")
+    for f in stride(from: 0, to: n, by: step) {
+        let r = romCounts[f], s = simCounts[f]
+        let bar = { (c: Int) in String(repeating: "█", count: min(c, 20)) }
+        print(String(format: "  f%4d  %2d │ %2d  idx%2d  %@ · %@",
+                     f, r, s, rom[f].waveIdx, bar(r), bar(s)))
+    }
+
+    // —— Headline composite (v1): lower is closer. Documented so "reduce the number" has a target.
+    // Both terms are now gated on both-ships-alive, so the formula is genuinely apples-to-apples
+    // across zones (a zone where the bot dies early is scored over its pre-death window, not the
+    // post-death chaos). Keep the formula fixed across zones.
+    let headline = (meanPErr.isNaN ? 0 : meanPErr) + 6 * meanCountDiff
+    print(String(format: "\nDIVERGENCE (v1 = meanPlayerErr + 6·mean|Δcount|) = %.1f   ← drive this down\n", headline))
+    return headline
 }
 
-// —— Headline composite (v1): lower is closer. Documented so "reduce the number" has a target.
-let headline = (meanPErr.isNaN ? 0 : meanPErr) + 6 * meanCountDiff
-print(String(format: "\nDIVERGENCE (v1 = meanPlayerErr + 6·mean|Δcount|) = %.1f   ← drive this down\n", headline))
+// ── DISPATCH ────────────────────────────────────────────────────────────────────────────
+if args.contains("all") {
+    var results: [(Zone, Double)] = []
+    for z in Zone.allCases { results.append((z, scoreZone(z))) }
+    print("═══ ALL ZONES — DIVERGENCE (v1, identical formula) ═══")
+    for (z, d) in results { print(String(format: "  %-9@ %6.1f", z.rawValue, d)) }
+} else {
+    let z = parseZone(args) ?? .galaxy
+    _ = scoreZone(z)
+}
