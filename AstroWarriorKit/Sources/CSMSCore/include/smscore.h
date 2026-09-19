@@ -32,6 +32,23 @@ int sms_core_port(int port);
 // Peek a VDP register (0–15). Reg 9 = vertical scroll.
 int sms_core_vdp_reg(int reg);
 
+// Peek VDP VRAM (0x0000–0x3FFF) / CRAM (0x00–0x3F). CRAM bytes are 6-bit --BBGGRR.
+int sms_core_vram(int addr);
+int sms_core_cram(int addr);
+
+// Sprite Attribute Table base in VRAM (from VDP reg 5), and a byte of the SAT by index.
+int sms_core_sat_base(void);
+int sms_core_sat(int index);
+
+// Poke a byte of Z80 work RAM (0xC000–0xDFFF) — stage-warp / harness poke primitive.
+void sms_core_write_ram(int addr, int val);
+
+// PSG (SN76489) write capture — dev-only, opt-in, does not affect emulation/determinism.
+// Enable + clear, then drain the raw port-0x7F bytes captured since the reset.
+void sms_core_psg_capture_reset(void);
+int  sms_core_psg_count(void);
+int  sms_core_psg_drain(uint8_t *out, int max);
+
 #define SMSB_UP    0x01u
 #define SMSB_DOWN  0x02u
 #define SMSB_LEFT  0x04u

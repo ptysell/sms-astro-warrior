@@ -127,8 +127,36 @@ public final class World {
         // Edge-triggered start: a fire that's already held (e.g. carried across a reset)
         // must not auto-start — you press to start. The game auto-starts because its fire
         // rises from false on frame 1.
-        if mode == .title, intent.fire, !startFireLatch { mode = .playing }
+        let rising = intent.fire && !startFireLatch
+        switch mode {
+        case .title:
+            if rising { mode = .playing }
+        case .gameOver:
+            // Close the loop: a fresh fire-press restarts the game (back to the title).
+            // The held fire that ended the run does NOT auto-restart — it's edge-triggered.
+            if rising { restart() }
+        default:
+            break
+        }
         startFireLatch = intent.fire
+    }
+
+    /// Reset to a brand-new game (score/lives/field/campaign) and return to the title.
+    /// hiScore persists across games (arcade behavior). Called from game-over on a fire edge.
+    func restart() {
+        score = 0
+        lives = Tuning.startingLives
+        entities.removeAll()
+        nextExtraLifeAt = Tuning.extraLifeEvery
+        extraLivesGranted = 0
+        bossDefeated = false
+        spawner.reset()
+        campaign.reset(director)                    // back to zone 1, loop 0
+        player.isDead = false
+        player.position = Vec2(LOGICAL_WIDTH / 2, Tuning.shipStartY)
+        player.form = 1
+        player.blocksDestroyed = 0
+        mode = .title
     }
 
     /// Seed the title fire-latch so a currently-held fire isn't seen as a fresh press.
