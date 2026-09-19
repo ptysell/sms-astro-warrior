@@ -17,4 +17,11 @@ public final class Campaign {
         director.load(levels[index])
         // TODO(S9): scale spawn rate / velocity by `loop`. [extract]
     }
+
+    /// Return to the first zone / loop 0 for a fresh game (called by World.restart on game-over).
+    public func reset(_ director: LevelDirector) {
+        index = 0
+        loop = 0
+        director.load(levels[0])
+    }
 }

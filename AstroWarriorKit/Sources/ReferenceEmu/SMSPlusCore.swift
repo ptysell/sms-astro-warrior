@@ -28,6 +28,30 @@ public final class SMSPlusCore: ReferenceCore {
     public func readPort(_ port: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_port(Int32(port))) }
     public func readVDPReg(_ reg: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_vdp_reg(Int32(reg))) }
 
+    // ── Audiovisual + stage-warp taps ──
+    public func readVRAM(_ address: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_vram(Int32(address))) }
+    public func readCRAM(_ address: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_cram(Int32(address))) }
+    public func satBase() -> Int { Int(sms_core_sat_base()) }
+    public func readSAT(_ index: Int) -> UInt8 { UInt8(truncatingIfNeeded: sms_core_sat(Int32(index))) }
+
+    public func writeRAM(_ address: Int, _ value: UInt8) {
+        guard loaded else { return }
+        sms_core_write_ram(Int32(address), Int32(value))
+    }
+
+    public func psgCaptureReset() { sms_core_psg_capture_reset() }
+
+    public func psgDrain() -> [UInt8] {
+        let count = Int(sms_core_psg_count())
+        guard count > 0 else { return [] }
+        var buf = [UInt8](repeating: 0, count: count)
+        let n = buf.withUnsafeMutableBufferPointer { p in
+            Int(sms_core_psg_drain(p.baseAddress, Int32(p.count)))
+        }
+        if n < buf.count { buf.removeLast(buf.count - n) }
+        return buf
+    }
+
     public func step(buttons: RefButtons, pause: Bool) {
         guard loaded else { return }
         sms_core_set_buttons(buttons.rawValue, pause ? 1 : 0)

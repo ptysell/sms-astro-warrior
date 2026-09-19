@@ -116,3 +116,81 @@ int sms_core_vdp_reg(int reg) {
     if (!g_loaded || reg < 0 || reg > 15) return 0;
     return vdp.reg[reg];
 }
+
+// Peek a byte of VDP VRAM (0x0000–0x3FFF, 16 KB). Holds the name table, pattern
+// generator, and the Sprite Attribute Table (base = sms_core_sat_base()). `vdp` is
+// the core's VDP global (extern in vdp.h, pulled in via shared.h).
+int sms_core_vram(int addr) {
+    if (!g_loaded) return 0;
+    return vdp.vram[(unsigned)addr & 0x3FFF];
+}
+
+// Peek a byte of VDP CRAM (0x00–0x3F). SMS uses indices 0x00–0x1F: two 16-colour
+// palettes (background, then sprites), each byte packed --BBGGRR (6-bit colour).
+int sms_core_cram(int addr) {
+    if (!g_loaded) return 0;
+    return vdp.cram[(unsigned)addr & 0x3F];
+}
+
+// Sprite Attribute Table base address in VRAM, derived by the core from VDP reg 5.
+int sms_core_sat_base(void) {
+    if (!g_loaded) return 0;
+    return vdp.satb;
+}
+
+// Peek a byte of the Sprite Attribute Table (index relative to the SAT base). The SAT
+// layout is: y[0..63] at +0x00, then (x,pattern) pairs at +0x80. 0xD0 in a y-slot ends
+// the visible list.
+int sms_core_sat(int index) {
+    if (!g_loaded) return 0;
+    return vdp.vram[(unsigned)(vdp.satb + index) & 0x3FFF];
+}
+
+// Poke a byte of Z80 work RAM (0xC000–0xDFFF, 8 KB mirrored) — mirror of sms_core_ram.
+// Dev/harness only: lets a stage-warp harness set the variant/stage selector (e.g.
+// 0xC240), wave-index (0xC211), or stage counter (0xC25B) to jump into a later zone.
+void sms_core_write_ram(int addr, int val) {
+    if (!g_loaded) return;
+    sms.wram[(unsigned)addr & 0x1FFF] = (uint8_t)(val & 0xFF);
+}
+
+// ---- PSG (SN76489) write capture — dev/debug only, opt-in, read-only ----
+// A ring of raw bytes written to the PSG data port (0x7F), appended by a hook in the
+// SN76489 write path (sn76489.c). It is a STRICT no-op unless capture is enabled and it
+// never reads or mutates any emulation state, so it cannot affect timing or determinism.
+#define SMS_PSG_LOG_CAP 8192
+static uint8_t g_psg_log[SMS_PSG_LOG_CAP];
+static int     g_psg_head    = 0;   // next ring slot to write
+static int     g_psg_total   = 0;   // total writes since reset (may exceed cap)
+static int     g_psg_enabled = 0;   // capture off by default
+
+// Hook called from SN76489_Write on every PSG data write. No-op unless enabled.
+void sms_psg_capture_note(int data) {
+    if (!g_psg_enabled) return;
+    g_psg_log[g_psg_head] = (uint8_t)(data & 0xFF);
+    g_psg_head = (g_psg_head + 1) % SMS_PSG_LOG_CAP;
+    g_psg_total++;
+}
+
+// Enable capture and clear the log.
+void sms_core_psg_capture_reset(void) {
+    g_psg_enabled = 1;
+    g_psg_head = 0;
+    g_psg_total = 0;
+}
+
+// Total PSG writes captured since the last reset (uncapped; may exceed the ring size).
+int sms_core_psg_count(void) { return g_psg_total; }
+
+// Copy up to `max` captured bytes (oldest-first) into `out`, then clear the log; returns
+// the number copied. If more than SMS_PSG_LOG_CAP writes occurred, only the most recent
+// SMS_PSG_LOG_CAP survive in the ring.
+int sms_core_psg_drain(uint8_t *out, int max) {
+    if (!out || max <= 0) { g_psg_head = 0; g_psg_total = 0; return 0; }
+    int avail = g_psg_total < SMS_PSG_LOG_CAP ? g_psg_total : SMS_PSG_LOG_CAP;
+    int n = avail < max ? avail : max;
+    int start = (g_psg_total <= SMS_PSG_LOG_CAP) ? 0 : g_psg_head;   // oldest survivor
+    for (int i = 0; i < n; i++) out[i] = g_psg_log[(unsigned)(start + i) % SMS_PSG_LOG_CAP];
+    g_psg_head = 0; g_psg_total = 0;
+    return n;
+}

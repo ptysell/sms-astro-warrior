@@ -112,9 +112,16 @@ uint32_t SN76489_GetContextSize(void)
     return sizeof(SN76489_Context);
 }
 
+/* dev/debug PSG-write capture tap (defined in shim.c). Reads `data` only and never
+   touches chip state — a strict no-op unless capture is explicitly enabled — so it
+   cannot alter emulation timing or determinism. */
+extern void sms_psg_capture_note(int data);
+
 void SN76489_Write(int32_t which, int32_t data)
 {
     SN76489_Context *p = &SN76489[which];
+
+    if (which == 0) sms_psg_capture_note((int)data);
 
 	if (data&0x80) {
         /* Latch/data byte  %1 cc t dddd */
