@@ -28,8 +28,26 @@ sections (we are past Wave 0–2).
 >   corrections: **the game loops forever (no ending screen)**; `sub_2309` is a palette pulse, not
 >   progression; per-loop difficulty is **fire-gating + roster only, no speed scaling**; and `0x22` is
 >   **200 pts** (corrects `parity-findings.md §4a`).
-> - **Next:** Wave 1b (visual VRAM/CRAM/tile/palette/sprite extraction on the new taps) → Wave 2
->   (pour the decode into `GameSim`, starting with the velocity model — the residual-parity lever).
+> - **Wave 1b — DONE (PR #16/#17).** `AssetRip` harness rips per-zone CRAM palettes / VRAM tile sheet /
+>   name-table bg / metasprites (dev-only, ©SEGA, never committed). Galaxy render skin ships OUR recreated
+>   pixel art (parallax starfield, cult ring-discs, fortress). Provenance = recreate-to-match.
+> - **Wave 2 — DONE (PR #15).** ROM magnitude+direction motion + flight-script engine wired for the Galaxy
+>   grunts. **Galaxy DIVERGENCE 9.2 → 3.5** (mean count exact); zanix confirmed a pendulum.
+> - **Wave 3a — DONE (PR #18).** Stage-warp parity harness — `ParityScore [galaxy|asteroid|nebula|all]`
+>   measures all zones (ROM 0xC240 hold + SIM `World.setZone`). First trustworthy Ast/Neb numbers.
+> - **Wave 3b — DONE (PR #19).** All **12 Asteroid/Nebula enemies** ported to the ROM motion model
+>   (`Behaviors/AsteroidNebulaMovers.swift`), + the **enemy-birth primitive** (`World.spawnPoolEnemy`:
+>   dririt split, dilon divers, 12-slot pool cap), the **wave-start pool throttle** (ROM `0x3F2B`), the
+>   **explicit per-member-X formation** (§2F TODO) + per-member entry stagger, and the **179f warm-up
+>   onset fix**. Fixed a real bug: ashion/burdle fire is loop-gated → `NoAttack` on loop-0. 11 oracle
+>   unit tests lock the ROM-exact motion. **ParityScore DE-CONFOUNDED** (§Q-score): the fire-always dodge
+>   tape *mows* enemies in the fire path (a sub-frame motion diff flips a hit), so a `nofire` bot +
+>   population-only headline (`6·|Δcount|`) + pre-first-death window now score motion/schedule cleanly.
+>   **Galaxy 3.5 → 2.8** (the pool cap); de-confounded motion+schedule (no-fire `6·|Δcount|`): **Galaxy
+>   1.9 (|Δ|0.3), Nebula 4.8 (|Δ|0.8), Asteroid 7.3 (|Δ|1.2)** — all within ~1 enemy/frame of the ROM.
+> - **Next:** exact per-wave hold-delays + member-X for all 64 Ast/Neb waves (only the pre-death window is
+>   done; a global `astNebEntryStagger=6` best-fit stands in) → **multi-part boss model** (driver `0x3B94`,
+>   decode complete) → **power-up ladder + weapons** (`0xC228`, decode complete) → visual/audio rivers.
 
 ---
 
@@ -100,7 +118,7 @@ This is the "make sure we understand all aspects" deliverable. Each row: current
 | Game-over → restart | ☐ | dead end (`updateMenus` only `title→playing`) | ☐ | wire restart + score screen |
 | Stage length / boss trigger | ✅ `0xC020` init 1080; boss at `==0`; scrollLength ~7392 | ✅ wired | n/a | done (offset provisional, §2G) |
 | Zone→boss→loop progression | ◑ `0xC238`/`0xC25B`; wrap at 6 | loop wraps, **no difficulty scale** | n/a | trace state machine `sub_2309` |
-| Loop difficulty ramp | ◑ fire gated `0xC240≥3`; `0x19` ungated loop 1 | ☐ never armed | n/a | implement loop→fire-arm + velocity scale |
+| Loop difficulty ramp | ◑ fire gated `0xC240≥3`; `0x19` ungated loop 1 | ◑ loop-gated fire wired (`Campaign.loop`, loop-0 exact); per-loop velocity scale still ☐ | n/a | implement loop→velocity scale |
 
 ### 2C. Backgrounds & tiles
 | Aspect | RE | SIM | Shown | Lead |
@@ -135,12 +153,12 @@ This is the "make sure we understand all aspects" deliverable. Each row: current
 | Aspect | RE | SIM | Lead |
 |---|---|---|---|
 | Per-species HP/points/hitbox | ✅ ROM-EXACT | ✅ wired | done |
-| Movement handlers (per type) | ◑ handler addrs known (49AC…5AD5) | approx (4 primitives) | convert **slot-2 velocity vector tables** |
-| Flight-path scripts (stream) | ◑ 8-entry table `0x4B6A` → scripts `0xA0A8…` | ☐ | decode path scripts |
-| Motion refinements | ◑ documented | ☐ TODO | Cult convergence; Sharlin down-right curve; kyra 2-phase homing; arbleby swoop |
-| New primitives | ◑ handlers known | ☐ inert | dilon **carrier** (`0x51EB` births 0x18 divers); dririt **self-split** (`0x4FB5`) |
-| Enemy bullets | ◑ type `0x14` @`0x18EE`, aimed ~1.9 px/f, loop-gated | ☐ `NoAttack` stage 1 | wire loop-gated fire |
-| Formation model | ◑ X-lists captured in cues | `.line` exact only for 32px rows | add **explicit per-member-X** formation |
+| Movement handlers (per type) | ✅ ROM-EXACT (velocity/dir per type) | ✅ all 3 zones (Wave 2 Galaxy, Wave 3b Ast/Neb) via the shared integrator | done; exact per-wave hold-delays are the residual |
+| Flight-path scripts (stream) | ✅ 10 scripts `0x4B6A` → LUT `0xA000` | ✅ `FlightPathMove` (P0–P9, verbatim LUT) | done |
+| Motion refinements | ✅ documented | ✅ convergence/curve/swoop/split/carrier all modeled | done |
+| New primitives | ✅ handlers decoded | ✅ dilon carrier + dririt split via `World.spawnPoolEnemy` (12-slot cap); edge-entry/swoop movers | done |
+| Enemy bullets | ✅ type `0x14` @`0x18EE`, aimed 1.875 px/f, loop-gated | ✅ loop-gated (ashion/burdle silent loop-0); ufolick burst / triat spread / tricker+arbleby aimed fire loop-0 | done for loop-0 |
+| Formation model | ✅ X-lists captured in cues | ✅ **explicit per-member-X** (`Wave.memberX`) + entry stagger (`Wave.entryStagger`) | done (pre-death waves; full-schedule X is the residual) |
 | Wave schedules / groups | ✅ all 192 waves | ✅ wired | done |
 
 ### 2G. Player, weapons, power-ups
@@ -281,8 +299,11 @@ loop** (C-calib) and the **boss phase-script decode** (`Gx-boss`) — front-load
 
 ## 7. Definition of Done — the finish line (repeat of §0, as a checklist)
 
-- [ ] **PLAYS:** `ParityScore` DIVERGENCE ≤ 2.0 for Galaxy **and** Asteroid **and** Nebula, plus each
-      boss fight, off shared tapes; cumulative-spawn exact; player-pos err ≤ 1 px.
+- [◑] **PLAYS:** motion/schedule now measured by the DE-CONFOUNDED `ParityScore nofire` (`6·|Δcount|`,
+      pre-first-death window) since the fire-always tape mows enemies in the fire path — currently
+      Galaxy **1.9**, Nebula **4.8**, Asteroid **7.3** (all within ~1 enemy/frame of the ROM); Galaxy
+      player-pos err **0.8 px**; Galaxy fire DIVERGENCE **2.8**. Remaining to hit ≤ 2.0 everywhere:
+      exact per-wave delays/X (Asteroid), the 3 boss fights, and per-loop scaling.
 - [ ] **LOOKS:** every zone background, all sprites/tiles, HUD, and each screen pixel-match the ROM
       within tolerance; **CRAM exact** per zone; power-up blocks placed correctly in the field.
 - [ ] **SOUNDS:** every music track + SFX matches the captured PSG stream.

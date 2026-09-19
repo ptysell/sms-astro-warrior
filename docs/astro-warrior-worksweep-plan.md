@@ -7,7 +7,7 @@ This is the orchestration plan; the blueprint is the spec.
 
 ---
 
-## 0. Status (updated 2026-08-29)
+## 0. Status (updated 2026-09-19)
 
 Data-extraction river is done for stage content; **the schedules are now INTEGRATED and MEASURED** (session 4):
 
@@ -17,27 +17,37 @@ Data-extraction river is done for stage content; **the schedules are now INTEGRA
 | **D3 Bestiary stats** | ✅ HP/points/hitbox/fire/movement ROM-EXACT for all 3 zones; **wired into `Bestiary.swift`**; names provisional | `Bestiary.swift`; [`parity-findings.md`](parity-findings.md) §4d |
 | **D4 Scroll & spawn** | ✅ scroll cadence (128 frames/wave-idx), variant selection, wave-table geometry | §4c/§4d |
 | **D5 Wave layout** | ✅ decoded + verified (192 waves) **AND integrated into all 3 stages** (Galaxy idx5..60, Ast/Neb full) | `DefaultContent.swift`; §4b/§4d |
-| **D7 Boss scripts** | ◑ structure decoded; single-`Int` `BossSpec` stub wired; multi-part model + per-phase scripts (`0xA858`/`0xD030`) **still TODO** | §4d |
+| **D7 Boss scripts** | ◑ decode COMPLETE (unified driver `0x3B94`; `0xA858/0xD030` are player-X clamp bounds, NOT phase scripts — premise refuted; segment layouts/hit-counts known); single-`Int` `BossSpec` stub wired; **multi-part sim model still TODO** | [`rom-decode-systems.md`](rom-decode-systems.md) §boss |
 | **D8 Scoring** | ✅ points + reward-index table @`0x5C60`; live score at `0xC232` (0xC030 = hi-score buffer) | §4a/§4d |
-| **D2 Weapon forms / D6 Power-up ladder** | ☐ thresholds known (12…120), effects pending | — |
+| **D2 Weapon forms / D6 Power-up ladder** | ◑ decode COMPLETE (block counter `0xC228` wrap-12, ladder `0xC229`→`0x0C98`, Triple=double-wide/Laser=piercing beam, drones); **sim still inert** | [`rom-decode-systems.md`](rom-decode-systems.md) §powerup |
 
-**Parity yardstick (session 4, the measurement backbone):** `swift run ParityScore` drives the real
-ROM + headless sim off one shared tape and scores them (player-pos / population / spawn-timeline /
-cumulative-spawn / a headline **DIVERGENCE**). `swift run ParityScore census` dumps the ROM's real
-schedule. **Galaxy DIVERGENCE 30.5 → 9.2**; player error 13.5 → 0.8 px; sim-empty 493 → 90 frames;
-cumulative spawns ROM 36 / SIM 40 (schedule faithful).
+**Parity yardstick (the measurement backbone):** `swift run ParityScore [galaxy|asteroid|nebula|all]`
+drives the real ROM + headless sim off one shared tape and scores them (player-pos / population /
+spawn-timeline / cumulative-spawn / a headline **DIVERGENCE**). `census` dumps the ROM's real schedule.
+Progression: **Galaxy DIVERGENCE 30.5 → 9.2 → 3.5 → 2.8** (session 4 schedule, Wave 2 motion, Wave 3b
+pool cap); player error **0.8 px**; cumulative spawns match (schedule faithful).
+**DE-CONFOUNDED (Wave 3b):** the default `dodge` tape always fires, so the replayed player *mows*
+enemies in its fire path — a sub-frame motion diff flips a hit, so the population metric can't fairly
+score motion. `swift run ParityScore nofire [zone|all]` uses a NO-FIRE bot + population-only headline
+(`6·|Δcount|`) + a pre-first-death window. De-confounded motion/schedule: **Galaxy 1.9, Nebula 4.8,
+Asteroid 7.3** — all within ~1 enemy/frame of the ROM.
 
 **Remaining code-river work (punch list, ordered by leverage):**
-1. **Movement + player-weapon calibration** — the residual DIVERGENCE (9.2) is combat/enemy-lifetime
-   fidelity, NOT schedule (proven by the spawn metric). Calibrate enemy velocities against slot-2
-   velocity tables and the player weapon against the ROM. **This is the #1 lever now.**
-2. **Stage-warp harness** — so Asteroid/Nebula parity becomes MEASURABLE (the dodge bot can't reach
-   them). Also a better survival bot (dies ~idx21 on the first bullets).
-3. **Multi-part boss model** — replace the single-`Int` `BossSpec` for Zanoni (0x28 core + 0x16
-   turrets) / Nebiros / Belzebul; decode the per-phase scripts `0xA858`/`0xD030`.
-4. **New sim primitives** — carrier-spawn (dilon), self-split (dririt), per-member explicit-X
-   formation, stream flight-path scripts (8 paths @0x4B6A → slot2 vector tables @0xA000).
-5. **Species-name confirmation** (bank-4 sprite decode) and weapon-form / power-up-ladder effects.
+1. ~~Movement calibration~~ **DONE (Wave 2 Galaxy, Wave 3b Ast/Neb):** all enemies use the ROM
+   magnitude+direction model + flight-script engine; the fire-metric residual is the mowing CONFOUND,
+   not motion (see the de-confounded metric above).
+2. ~~Stage-warp harness~~ **DONE (Wave 3a):** all zones measurable; ~~new sim primitives~~ **DONE
+   (Wave 3b):** dilon carrier + dririt split (`World.spawnPoolEnemy`, 12-slot pool cap), explicit
+   per-member-X formation, stream flight-path scripts (`FlightPathMove`, P0–P9).
+3. **Exact per-wave hold-delays + member-X for all 64 Ast/Neb waves** — the #1 remaining Ast/Neb lever
+   (only the pre-death window is done; a global `astNebEntryStagger=6` best-fit stands in). Should push
+   Asteroid `|Δcount|` below 1.
+4. **Multi-part boss model** — replace the single-`Int` `BossSpec` for Zanoni / Nebiros / Belzebul.
+   Decode is COMPLETE (unified driver `0x3B94`; the `0xA858/0xD030` "phase-script" premise is refuted —
+   they are player-X clamp bounds); see [`rom-decode-systems.md`](rom-decode-systems.md) §boss.
+5. **Power-up ladder + weapon forms** — decode COMPLETE (block counter `0xC228`, ladder `0xC229`
+   → `0x0C98`, Triple=double-wide/Laser=piercing beam, drones); see §powerup.
+6. **Species-name confirmation** (bank-4 sprite decode); visual + audio rivers.
 
 Tooling note: `z80dis` (Python) is the disassembler of record; the ROM decodes with file-offset ==
 CPU-address in banks 0–1. Git repo with a PR/merge workflow. The parity harness (`ParityScore`,
