@@ -14,6 +14,28 @@ public final class Enemy: Entity, Damageable, Faction {
     public var attackCooldown: Double = 0
     public var headingLocked = false               // for one-shot homing (Dive)
 
+    // —— ROM magnitude+direction motion model (Wave-2a) ——————————————————————————
+    // The ROM stores no signed velocity per enemy: it keeps per-axis step MAGNITUDES
+    // (+0x0C/0D = |vy|, +0x0E/0F = |vx|) plus a 4-bit DIRECTION field (+0x02), and a single
+    // shared integrator (0x0416, ported as Integrator.apply) applies them each frame with a
+    // sign chosen by the direction bits. Handlers/behaviors set these; the integrator moves.
+    public var stepX: Double = 0                   // |vx| px/frame (sim units)
+    public var stepY: Double = 0                   // |vy| px/frame
+    public var dirMask: UInt8 = 0                  // +0x02: bit0 up, bit1 down, bit2 left, bit3 right
+    // FSM / flight-script scratch (per-enemy state the behaviors advance).
+    public var motionPhase: Int = 0
+    public var phaseTimer: Int = 0
+    public var motionInited = false
+    public var flightIndex: Int = 0                // current step in a flight script
+    public var flightHold: Int = 0                 // frames left on the current flight step
+    // Stream MOVEMENT-release stagger (ROM record +0x15): a stream member exists (and is counted)
+    // from the wave's spawn frame but holds its motion for `releaseDelay` frames — the ROM spawns
+    // all N members stacked at once and releases them ~interval frames apart. 0 = move immediately.
+    public var releaseDelay: Int = 0
+    // Flight-script index (ROM record +0x13) for type-0x18 sharlin — set per-wave by the spawner
+    // from Wave.pathIndex; FlightPathMove reads it. Default 0 (P0) for a bare-constructed sharlin.
+    public var flightPathIndex: Int = 0
+
     public init(at p: Vec2, sprite: SpriteRef, hitbox: Hitbox,
                 hp: Int, points: Int,
                 movement: MovementBehavior, attack: AttackBehavior,
@@ -27,12 +49,21 @@ public final class Enemy: Entity, Damageable, Faction {
 
     public override func update(_ ctx: SimContext) {
         age += 1
-        movement.step(self, ctx)
+        // Stream stagger (ROM +0x15): member stays stacked at its spawn point until its release
+        // frame, then its handler/integrator run normally. The entity is alive & counted meanwhile.
+        if age <= releaseDelay { return }
+        movement.step(self, ctx)      // handler: set stepX/stepY/dirMask (ROM model) or move directly (legacy)
+        Integrator.apply(to: self)    // shared 0x0416 pass: apply magnitude×direction + off-screen despawn
         attack.step(self, ctx)
     }
 
     public func takeDamage(_ amount: Int, _ ctx: SimContext) {
         guard !indestructible else { return }
+        // Not yet vulnerable while still entering from ABOVE the top edge (screen-Y ≤ 0, i.e.
+        // logical y ≥ LOGICAL_HEIGHT). The ROM cannot destroy a wave's members before they cross
+        // onto the field — critical for the stacked stream (6 sharlin sit at the centre-top column
+        // and would otherwise be mown by the player's straight-up fire, which the ROM never allows).
+        guard position.y < LOGICAL_HEIGHT else { return }
         hp -= amount
         if hp <= 0 {
             ctx.world.addScore(points)

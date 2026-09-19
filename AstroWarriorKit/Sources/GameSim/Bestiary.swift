@@ -5,57 +5,62 @@ public enum Bestiary {
     // movement/curves are best-fit. ALL Galaxy grunts are 1-HP, 100 pts, and their latent aimed fire is
     // LOOP-GATED behind 0xC240>=3 — SILENT on the first playthrough — so faithful stage-1 = NoAttack().
     public static func cult() -> Enemy {           // romType 0x15 (21) @0x4842 — ringed disc, 1-HP, 100pts (ROM-EXACT)
-        // Flat row of 4 (~32 px apart), descends ~1.5 px/f converging toward centre (converge = TODO).
+        // Wave-2a MOTION: AIMS at the player once (1.875 px/f split by angle, ROM 0x18fd) then holds
+        // |vy| while |vx| drifts toward centre (−0.125 px/f per 16f, rebuild +0.03 px/f). AimConverge.
         // Single-hit death (0x5be3/0x5c1b); collision tbl @0x1C04 = 16×16 → r8.
         Enemy(at: .zero, sprite: SpriteRef("cult"), hitbox: .circle(r: 8),
               hp: 1, points: 100,
-              movement: Descend(speed: 1.5),
+              movement: AimConverge(),
               attack: NoAttack())
     }
     public static func sharlin() -> Enemy {        // romType 0x18 (24) @0x4A5F — chevron stream grunt, 1-HP, 100pts (ROM-EXACT)
-        // Six spawn stacked at centre (X=128) and release per +0x15 stagger, each on a scripted flight
-        // path (ptrs @0x4B6A → slot2 vel tbl @0xA000) curving down-right ~1.7 px/f (curve = TODO).
-        // Leader-chain bonus (hit +0x14==1 of an intact 6-set → chain-kill, 1000 pts) not yet modelled.
+        // Wave-2a MOTION: real flight-script engine (bank6 scripts @0x4B6A → polar LUT @0xA000). Six
+        // spawn STACKED at centre (X=128) and release ~interval frames apart (WaveSpawner), each
+        // flying the wave's decoded path P0/P1/… — the path index (+0x13) is stamped per-wave onto
+        // Enemy.flightPathIndex by the spawner (from Wave.pathIndex), so a bare sharlin defaults to
+        // P0 with NO construction-order dependence. Quarter-arc / loop / serpentine curves at 2–3 px/f.
         // Single-hit death; collision tbl @0x1BA8 = 8×8 → r4 (refined from r7).
         Enemy(at: .zero, sprite: SpriteRef("sharlin"), hitbox: .circle(r: 4),
               hp: 1, points: 100,
-              movement: Descend(speed: 1.7), attack: NoAttack())
+              movement: FlightPathMove(),
+              attack: NoAttack())
     }
     public static func zanix() -> Enemy {          // romType 0x16 (22) @0x48E4 — Zanoni "X" turret grunt, 1-HP, 100pts (ROM-EXACT)
-        // Green-X defender; appears as waves of 4 (idx12-14) and on the fortress boss. Bobs vertically
-        // while drifting slowly in X. Single-hit death; collision tbl @0x1C20 = 14×14 → r7.
+        // Wave-2a MOTION: constant 0.5 px/f descent (down+right) with a horizontal sweep whose |vx|
+        // oscillates 0..1.5 px/f at 0.25 px/f² (ZanixSweep) — a slow, long-lived drift.
+        // Single-hit death; collision tbl @0x1C20 = 14×14 → r7.
         // Loop-gated aimed fire (≤2 bullets, 0xC240>=3) — silent on stage-1 loop, so NoAttack() here.
         Enemy(at: .zero, sprite: SpriteRef("zanix"), hitbox: .circle(r: 7),
               hp: 1, points: 100,
-              movement: Weave(speed: 0.8, amp: 40, freq: 0.03),
+              movement: ZanixSweep(),
               attack: NoAttack())
     }
-    public static func gyron() -> Enemy {          // romType 0x27 (39) @0x5577 — accelerating aimed diver, 1-HP, 100pts (ROM-EXACT)
-        // Galaxy waves idx20-23/40-43 (line of 4, X=80,112,144,176). Inits ±2 px/f both axes then state-2
-        // accelerates Y — an accelerating dive. NOT the end-boss core (that 8-hit counter is romType 0x28
-        // @0x5624). Single-hit death (0x5be3/0x5c1b); collision tbl @0x1CA0 = 12×12 → r6.
+    public static func gyron() -> Enemy {          // romType 0x27 (39) @0x5577 — spiralling diver, 1-HP, 100pts (ROM-EXACT)
+        // Wave-2a MOTION: enters at 2.0 px/f, walks an 8-direction CW rotation script (spiral), then
+        // accelerates horizontally at 0.09375 px/f² (GyronSpiral). NOT the end-boss core (that 8-hit
+        // counter is romType 0x28 @0x5624). Single-hit death; collision tbl @0x1CA0 = 12×12 → r6.
         // Loop-gated aimed shot (fires when player within 64px, 0xC240>=3) — silent on stage-1, NoAttack() here.
         Enemy(at: .zero, sprite: SpriteRef("gyron"), hitbox: .circle(r: 6),
               hp: 1, points: 100,
-              movement: Dive(speed: 2.0),
+              movement: GyronSpiral(),
               attack: NoAttack())
     }
     public static func kyra() -> Enemy {           // romType 0x22 (34) @0x5150 — dives to the player's row then homes, 1-HP, 200pts (ROM-EXACT)
-        // Late-Galaxy grunt (idx28-31 columns, idx52-55 diagonals). state0 Y-speed 3 + down; descends until
-        // past the player row (0xC609) then homes toward player X (0xC60B). Single-hit death; hitbox
-        // tbl 0x1B1C+0x3E*4 = 16×16 → r8. Aimed shot is 0xC240-gated (silent on stage-1 loop) → NoAttack().
+        // Wave-2a MOTION: dives 3.0 px/f; at the player's row turns up-and-toward the player column,
+        // accelerates horizontally at 0.125 px/f² until aligned, then re-dives (KyraSwoop).
+        // Single-hit death; hitbox tbl 0x1B1C+0x3E*4 = 16×16 → r8. Aimed shot is 0xC240-gated → NoAttack().
         Enemy(at: .zero, sprite: SpriteRef("kyra"), hitbox: .circle(r: 8),
               hp: 1, points: 200,
-              movement: Dive(speed: 3, lockAt: LOGICAL_HEIGHT * 0.25),
+              movement: KyraSwoop(),
               attack: NoAttack())
     }
     public static func delta() -> Enemy {          // romType 0x19 (25) @0x4B7E — swoop-in / halt-and-fire grunt, 1-HP, 200pts (ROM-EXACT)
-        // Late-Galaxy grunt (idx56-60). Swoops in ~2 px/f with an accelerating horizontal sweep, halts to
-        // fire, then retreats up. Single-hit death; hitbox tbl 0x1B1C+0x37*4 = 20×20 → r10. UNLIKE the other
-        // Galaxy grunts its aimed shot (type 0x14, ~1.9 px/f) is NOT loop-gated — it FIRES on loop 1.
+        // Wave-2a MOTION: 2.0 px/f descent with a triangular horizontal sweep at 0.125 px/f² (DeltaSweep).
+        // Single-hit death; hitbox tbl 0x1B1C+0x37*4 = 20×20 → r10. UNLIKE the other Galaxy grunts its
+        // aimed shot (type 0x14, ~1.9 px/f) is NOT loop-gated — it FIRES on loop 1 (kept below).
         Enemy(at: .zero, sprite: SpriteRef("delta"), hitbox: .circle(r: 10),
               hp: 1, points: 200,
-              movement: Weave(speed: 2, amp: 32, freq: 0.05),
+              movement: DeltaSweep(),
               attack: AimedShot(interval: 40, bulletSpeed: 2))
     }
     // (Removed the pre-decode speculative Galaxy guesses curos/sacle/motherBoon/spindow — unreferenced
